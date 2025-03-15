@@ -1,4 +1,4 @@
-use std::{fs, io::Write};
+use std::{fs, io::{Read, Write}};
 use crate::machine::machine_types::*;
 const MAX_STACK_SIZE: usize = 4096;
 
@@ -43,6 +43,37 @@ impl QuarkVM {
         }
     }
 
+    pub fn load_file(&mut self, file_name: &str) {
+        let mut f = fs::File::open(file_name).expect("QUARMVM: Error while opening the file");
+        let mut buf: Vec<u8> = vec![]; 
+        f.read_to_end(&mut buf).expect("QUARMVM: Error while reading the file");
+        let mut i = 0;
+        println!("BUFFER: {:?}", buf);
+        while i < buf.iter().len() {
+            let instruction = buf[i];
+            i += 1;
+            let argument_length = buf[i];
+            i += 1;
+            println!("INSTRUCTION: {:?} ARG_LEN: {:?}", instruction, argument_length);
+            let mut args: Vec<u16> = vec![];
+            for x in 0..argument_length {
+                let arg = u16::from_be_bytes([buf[i + x as usize], buf[i + x as usize + 1]]);
+                i += 2;
+                args.push(arg);
+            }
+            let instruction_type = InstructionType::try_from(instruction).expect("QUARMVM: Error while converting instruction to token type");
+            let instruction = Instruction {
+                tt: instruction_type,
+                values: if argument_length > 0 {
+                    Some(args)
+                } else {
+                    None
+                }
+            };
+            self.instructions.push(instruction);
+        }
+    }
+
     pub fn determine_function(&mut self) {
         match self.instructions[self.pc as usize].tt {
             InstructionType::INST_ADD => {
@@ -54,7 +85,7 @@ impl QuarkVM {
             InstructionType::INST_PUSH => {
                 match &self.instructions[self.pc as usize].values {
                     Some(value) => {
-                        self.push_stack(value[0]);
+                        self.push_stack(value[0] as u16);
                         self.pc += 1;
                     }
                     None => {
@@ -91,7 +122,6 @@ impl QuarkVM {
     }
 
     pub fn run(&mut self) {
-        self.store_file("test.qasm");
         while self.running {
             self.determine_function();
             if (self.pc as usize) >= self.instructions.len() {

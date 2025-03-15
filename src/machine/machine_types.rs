@@ -39,6 +39,17 @@ impl Default for InstructionType {
     }
 }
 
+impl TryFrom<u8> for InstructionType {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            x if x <= 0x07 => Ok(unsafe { std::mem::transmute(x) }),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Instruction {
     pub tt: InstructionType,
