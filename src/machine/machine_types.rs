@@ -1,3 +1,6 @@
+use super::bytecode::ByteCodeCompiler;
+
+
 const MAX_STACK_SIZE: usize = 4096;
 
 #[derive(Debug)]
@@ -6,7 +9,8 @@ pub struct QuarkVM {
     pub sp: i16,
     pub pc: i16,
     pub running: bool,
-    pub instructions: Vec<Instruction>
+    pub instructions: Vec<Instruction>,
+    pub byte_code_file: Option<ByteCodeCompiler>
 }
 
 impl Default for QuarkVM {
@@ -16,7 +20,8 @@ impl Default for QuarkVM {
             sp: -1,
             pc: 0,
             running: false,
-            instructions: vec![]
+            instructions: vec![],
+            byte_code_file: None
         }
     }
 }
@@ -28,6 +33,12 @@ pub enum InstructionType {
     INST_PUSH,
     INST_POP,
     INST_ADD,
+    INST_AND,
+    INST_OR,
+    INST_XOR,
+    INST_NOT,
+    INST_SHL,
+    INST_SHR,
     INST_MUL,
     INST_DIV,
     INST_SUB,
@@ -48,7 +59,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 11 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 17 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }

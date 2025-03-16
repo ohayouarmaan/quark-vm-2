@@ -1,10 +1,12 @@
 use std::{fs, io::{Read, Write}};
 use crate::machine::machine_types::*;
+
+use super::bytecode::ByteCodeCompiler;
 const MAX_STACK_SIZE: usize = 4096;
 
 
 impl QuarkVM {
-    pub fn new() -> Self {
+    pub fn new(byte_code_compiler: ByteCodeCompiler) -> Self {
         Self {
             stack: [0; MAX_STACK_SIZE],
             sp: -1,
@@ -19,7 +21,8 @@ impl QuarkVM {
                 DEFINE_JMPZ(2),
                 DEFINE_PUSH(4),
                 DEFINE_PUSH(4),
-            ]
+            ],
+            byte_code_file: Some(byte_code_compiler)
         }
     }
 
@@ -34,43 +37,26 @@ impl QuarkVM {
         self.stack[self.sp as usize] = value;
     }
 
-    pub fn store_file(&mut self, file_name: &str) {
-        let mut f = fs::File::create(file_name).expect("QUARMVM: Failed to create the file");
-        for instruction in self.instructions.iter() {
-            f.write_all(&instruction.to_bytes()).unwrap_or_else(|_| panic!("QUARMVM: Error while writing instruction {:?}", instruction));
+    pub fn store_file(&mut self) {
+        match &mut self.byte_code_file {
+            Some(bc) => {
+                bc.store_file(&self.instructions)
+            },
+            None => {
+                panic!("QUARMVM: Error while storing to file, bytecode compiler not provided.")
+            }
         }
     }
 
-    pub fn load_file(&mut self, file_name: &str) {
-        let mut f = fs::File::open(file_name).expect("QUARMVM: Error while opening the file");
-        let mut buf: Vec<u8> = vec![]; 
-        f.read_to_end(&mut buf).expect("QUARMVM: Error while reading the file");
-        let mut i = 0;
-        println!("BUFFER: {:?}", buf);
-        let mut ins = vec![];
-        while i < buf.iter().len() {
-            let instruction = buf[i];
-            i += 1;
-            let argument_length = buf[i];
-            i += 1;
-            let mut args: Vec<u16> = vec![];
-            for x in 0..argument_length {
-                let arg = u16::from_be_bytes([buf[i + x as usize], buf[i + x as usize + 1]]);
-                i += 2;
-                args.push(arg);
+    pub fn load_file(&mut self) {
+        match &mut self.byte_code_file {
+            Some(bc) => {
+                self.instructions = bc.load_file()
+            },
+            None => {
+                panic!("QUARMVM: Error while storing to file, bytecode compiler not provided.")
             }
-            let instruction_type = InstructionType::try_from(instruction).expect("QUARMVM: Error while converting instruction to token type");
-            let instruction = Instruction {
-                tt: instruction_type,
-                values: if argument_length > 0 {
-                    Some(args)
-                } else {
-                    None
-                }
-            };
-            ins.push(instruction);
         }
-        self.instructions = ins;
     }
 
     pub fn determine_function(&mut self) {
@@ -113,6 +99,35 @@ impl QuarkVM {
                 let b = self.pop_stack();
                 self.push_stack(b - a);
                 self.pc += 1;
+            },
+            InstructionType::INST_AND => {
+                let a = self.pop_stack();
+                let b = self.pop_stack();
+                self.push_stack(a & b);
+            },
+            InstructionType::INST_OR => {
+                let a = self.pop_stack();
+                let b = self.pop_stack();
+                self.push_stack(a | b);
+            },
+            InstructionType::INST_XOR => {
+                let a = self.pop_stack();
+                let b = self.pop_stack();
+                self.push_stack(a ^ b);
+            },
+            InstructionType::INST_NOT => {
+                let a = self.pop_stack();
+                self.push_stack(!a);
+            },
+            InstructionType::INST_SHL => {
+                let a = self.pop_stack();
+                let b = self.pop_stack();
+                self.push_stack(b << a);
+            },
+            InstructionType::INST_SHR => {
+                let a = self.pop_stack();
+                let b = self.pop_stack();
+                self.push_stack(b >> a);
             },
             InstructionType::INST_JMPZ => {
                 if self.stack[self.sp as usize] == 0 {
