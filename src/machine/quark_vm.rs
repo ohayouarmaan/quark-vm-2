@@ -12,6 +12,7 @@ impl QuarkVM {
             sp: -1,
             pc: 0,
             running: true,
+
             instructions: vec![
                 DEFINE_PUSH(14),
                 DEFINE_PUSH_STR("Hello, World\n"),
@@ -264,7 +265,7 @@ impl QuarkVM {
                     // Read syscall arguments from stack
                     if let Some(t_values) = &self.instructions[self.pc as usize].values {
                         if let Word::U16(len) = t_values[0] {
-                            for i in 0..(len as usize).min(6) {
+                            for i in 0..(len as usize) {
                                 match self.pop_stack() {
                                     StackValues::U16(v) => args[i] = v as usize,
                                     StackValues::Pointer(v) => args[i] = v as usize,
