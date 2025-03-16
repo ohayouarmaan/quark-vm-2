@@ -12,15 +12,13 @@ impl QuarkVM {
             running: true,
             instructions: vec![
                 DEFINE_PUSH(17),
-                DEFINE_PUSH(27),
+                DEFINE_PUSH(20),
                 DEFINE_ADD(),
                 DEFINE_PUSH(37),
-                DEFINE_ADD(),
-                DEFINE_PUSH(27),
-                DEFINE_PUSH(27),
-                DEFINE_PUSH(27),
-                DEFINE_PUSH(27),
-                DEFINE_SUB()
+                DEFINE_SUB(),
+                DEFINE_JMPZ(2),
+                DEFINE_PUSH(4),
+                DEFINE_PUSH(4),
             ]
         }
     }
@@ -115,6 +113,54 @@ impl QuarkVM {
                 let b = self.pop_stack();
                 self.push_stack(b - a);
                 self.pc += 1;
+            },
+            InstructionType::INST_JMPZ => {
+                if self.stack[self.sp as usize] == 0 {
+                    match &self.instructions[self.pc as usize].values {
+                        Some(value) => {
+                            self.pc += value[0] as i16;
+                        }
+                        None => {
+                            panic!("QUARMVM: does not have a value to push {:?}", self.instructions[self.pc as usize]);
+                        }
+                    }
+                };
+            },
+            InstructionType::INST_JMPEQ => {
+                if self.stack[self.sp as usize] == self.stack[(self.sp - 1) as usize] {
+                    match &self.instructions[self.pc as usize].values {
+                        Some(value) => {
+                            self.pc += value[0] as i16;
+                        }
+                        None => {
+                            panic!("QUARMVM: does not have a value to push {:?}", self.instructions[self.pc as usize]);
+                        }
+                    }
+                };
+            },
+            InstructionType::INST_JMPNEQ => {
+                if self.stack[self.sp as usize] != self.stack[(self.sp - 1) as usize] {
+                    match &self.instructions[self.pc as usize].values {
+                        Some(value) => {
+                            self.pc += value[0] as i16;
+                        }
+                        None => {
+                            panic!("QUARMVM: does not have a value to push {:?}", self.instructions[self.pc as usize]);
+                        }
+                    }
+                };
+            },
+            InstructionType::INST_JMPNZ => {
+                if self.stack[self.sp as usize] != 0 {
+                    match &self.instructions[self.pc as usize].values {
+                        Some(value) => {
+                            self.pc += value[0] as i16;
+                        }
+                        None => {
+                            panic!("QUARMVM: does not have a value to push {:?}", self.instructions[self.pc as usize]);
+                        }
+                    }
+                };
             },
             InstructionType::INST_NOOP => {
                 self.pc += 1;

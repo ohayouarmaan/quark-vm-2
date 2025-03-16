@@ -30,7 +30,11 @@ pub enum InstructionType {
     INST_ADD,
     INST_MUL,
     INST_DIV,
-    INST_SUB
+    INST_SUB,
+    INST_JMPZ,
+    INST_JMPEQ,
+    INST_JMPNEQ,
+    INST_JMPNZ,
 }
 
 impl Default for InstructionType {
@@ -44,7 +48,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 0x07 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 11 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -109,5 +113,26 @@ pub fn DEFINE_SUB() -> Instruction {
     return Instruction {
         tt: InstructionType::INST_SUB,
         values: None
+    }
+}
+
+pub fn DEFINE_JMPZ(x: u16) -> Instruction {
+    return Instruction {
+        tt: InstructionType::INST_JMPZ,
+        values: Some(vec![x])
+    }
+}
+
+pub fn DEFINE_JMPEQ(x: u16) -> Instruction {
+    return Instruction {
+        tt: InstructionType::INST_JMPEQ,
+        values: Some(vec![x])
+    }
+}
+
+pub fn DEFINE_JMPNZ(x: u16) -> Instruction {
+    return Instruction {
+        tt: InstructionType::INST_JMPNZ,
+        values: Some(vec![x])
     }
 }
