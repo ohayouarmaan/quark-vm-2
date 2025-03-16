@@ -278,12 +278,14 @@ impl QuarkVM {
                     unsafe {
                         asm!(
                             "syscall",
-                            in("rax") syscall_num as usize,  // Syscall number
-                            in("rdi") args[0],  // File descriptor (1 = stdout)
-                            in("rsi") args[1],  // Pointer to buffer
-                            in("rdx") args[2],  // Length of buffer
+                            in("rax") syscall_num as usize, // Syscall number
+                            in("rdi") args[0], // First argument
+                            in("rsi") args[1], // Second argument
+                            in("rdx") args[2], // Third argument
+                            in("r10") args[3], // Fourth argument
+                            in("r8")  args[4], // Fifth argument
+                            in("r9")  args[5], // Sixth argument
                             lateout("rax") result, // Return value
-                            options(nostack, preserves_flags)
                         );
                     }
 
