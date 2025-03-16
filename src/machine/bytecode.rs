@@ -1,50 +1,60 @@
+use core::panic;
 use std::{fs::File, io::{Read, Write}};
-
-use crate::machine::machine_types::InstructionType;
+use half::f16;
+use crate::machine::machine_types::{InstructionType, Word};
 
 use super::machine_types::Instruction;
 
 #[derive(Debug)]
 pub struct ByteCodeCompiler {
-    pub source_code: Vec<u8>,
     pub file_name: String,
-    pub fp: File
 }
 
 impl ByteCodeCompiler {
     pub fn new(file_name: &str) -> Self {
-        let mut fp = File::options().read(true).write(true).open(file_name).expect("QUARKVM: Error while opening the file");
-        let mut source_code = vec![];
-        fp.read_to_end(&mut source_code).expect("QUARKVM: Error while reading the file");
         Self {
             file_name: file_name.to_string(),
-            source_code,
-            fp
         }
     }
 
-    pub fn store_file(&mut self, instructions: &Vec<Instruction>) {
+    pub fn store_file(&mut self, instructions: &[Instruction]) {
+        let mut file = File::create(&self.file_name).expect("QUARMVM: Error while creating file");
         for instruction in instructions.iter() {
-            self.fp.write_all(&instruction.to_bytes()).unwrap_or_else(|e| panic!("QUARMVM: Error while writing instruction {:?} ERROR: {:?}", instruction, e));
+            file.write_all(&instruction.to_bytes()).expect("QUARMVM: Error while writing instruction");
         }
     }
 
     pub fn load_file(&mut self) -> Vec<Instruction> {
-        let mut buf: Vec<u8> = vec![]; 
-        self.fp.read_to_end(&mut buf).expect("QUARMVM: Error while reading the file");
+        let mut file = File::open(&self.file_name).expect("QUARMVM: Error while opening the file");
+        let mut buffer: Vec<u8> = vec![];
+        file.read_to_end(&mut buffer).expect("QUARMVM: Error while reading the file");
         let mut i = 0;
-        println!("BUFFER: {:?}", buf);
         let mut ins = vec![];
-        while i < buf.iter().len() {
-            let instruction = buf[i];
+        while i < buffer.iter().len() {
+            let instruction = buffer[i];
             i += 1;
-            let argument_length = buf[i];
+            let argument_length = buffer[i];
             i += 1;
-            let mut args: Vec<u16> = vec![];
+            let mut args: Vec<Word> = vec![];
             for x in 0..argument_length {
-                let arg = u16::from_be_bytes([buf[i + x as usize], buf[i + x as usize + 1]]);
+                let arg_type = buffer[i];
+                i += 1;
+                let arg = u16::from_be_bytes([buffer[i + x as usize], buffer[i + x as usize + 1]]);
                 i += 2;
-                args.push(arg);
+                match arg_type {
+                    0 => {
+                        args.push(Word::U16(arg));
+                    }
+                    1 => {
+                        args.push(Word::F16(f16::from_bits(arg)));
+                    }
+                    2 => {
+                        args.push(Word::Char(char::from_u32(u16::from_be_bytes(arg.to_be_bytes()) as u32).expect("QUARMVM: Error while decoding character")));
+                    }
+                    _ => {
+                        panic!("QUARMVM: Unknown argument type while parsing the qasm file");
+                    }
+                }
             }
             let instruction_type = InstructionType::try_from(instruction).expect("QUARMVM: Error while converting instruction to token type");
             let instruction = Instruction {

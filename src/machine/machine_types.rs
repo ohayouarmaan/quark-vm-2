@@ -1,11 +1,54 @@
 use super::bytecode::ByteCodeCompiler;
+use half::f16;
 
 
 const MAX_STACK_SIZE: usize = 4096;
 
 #[derive(Debug)]
+pub enum Word {
+    Char(char),
+    U16(u16),
+    F16(f16),
+}
+
+impl Word {
+    pub fn to_be_bytes(&self) -> [u8; 2]  {
+        match self {
+            Self::U16(x) => x.to_be_bytes(),
+            Self::F16(x) => x.to_be_bytes(),
+            Self::Char(c) => (*c as u16).to_be_bytes()
+        }
+    }
+}
+
+impl From<u16> for Word {
+    fn from(value: u16) -> Self {
+        return Self::U16(value);
+    }
+}
+
+impl From<f16> for Word {
+    fn from(value: f16) -> Self {
+        return Self::F16(value);
+    }
+}
+
+impl From<char> for Word {
+    fn from(value: char) -> Self {
+        return Self::Char(value);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum StackValues{
+    U16(u16),
+    Pointer(*const u8)
+}
+
+#[derive(Debug)]
 pub struct QuarkVM {
-    pub stack: [u16; MAX_STACK_SIZE],
+    pub stack: [StackValues; MAX_STACK_SIZE],
+    pub str_stack: Vec<u8>,
     pub sp: i16,
     pub pc: i16,
     pub running: bool,
@@ -16,7 +59,8 @@ pub struct QuarkVM {
 impl Default for QuarkVM {
     fn default() -> Self {
         Self {
-            stack: [0; MAX_STACK_SIZE],
+            stack: [StackValues::U16(0); MAX_STACK_SIZE],
+            str_stack: vec![],
             sp: -1,
             pc: 0,
             running: false,
@@ -46,6 +90,8 @@ pub enum InstructionType {
     INST_JMPEQ,
     INST_JMPNEQ,
     INST_JMPNZ,
+    INST_PUSH_STR,
+    INST_SYSCALL,
 }
 
 impl Default for InstructionType {
@@ -59,7 +105,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 17 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 19 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -68,7 +114,7 @@ impl TryFrom<u8> for InstructionType {
 #[derive(Debug)]
 pub struct Instruction {
     pub tt: InstructionType,
-    pub values: Option<Vec<u16>>
+    pub values: Option<Vec<Word>>
 }
 
 impl Instruction {
@@ -78,6 +124,11 @@ impl Instruction {
         buffer.push(self.values.iter().len() as u8);
         if let Some(values) = &self.values {
             for value in values {
+                match value {
+                    Word::U16(_) => buffer.push(0x00),
+                    Word::F16(_) => buffer.push(0x01),
+                    Word::Char(_) => buffer.push(0x10),
+                }
                 buffer.extend_from_slice(&value.to_be_bytes());
             }
         }
@@ -88,7 +139,7 @@ impl Instruction {
 pub fn DEFINE_PUSH(x: u16) -> Instruction {
     return Instruction {
         tt: InstructionType::INST_PUSH,
-        values: Some(vec![x])
+        values: Some(vec![Word::from(x)])
     }
 }
 
@@ -130,20 +181,37 @@ pub fn DEFINE_SUB() -> Instruction {
 pub fn DEFINE_JMPZ(x: u16) -> Instruction {
     return Instruction {
         tt: InstructionType::INST_JMPZ,
-        values: Some(vec![x])
+        values: Some(vec![Word::from(x)])
     }
 }
 
 pub fn DEFINE_JMPEQ(x: u16) -> Instruction {
     return Instruction {
         tt: InstructionType::INST_JMPEQ,
-        values: Some(vec![x])
+        values: Some(vec![Word::from(x)])
     }
 }
 
 pub fn DEFINE_JMPNZ(x: u16) -> Instruction {
     return Instruction {
         tt: InstructionType::INST_JMPNZ,
-        values: Some(vec![x])
+        values: Some(vec![Word::from(x)])
     }
 }
+
+pub fn DEFINE_PUSH_STR(x: &str) -> Instruction {
+    let mut values = vec![Word::from(x.len() as u16)];
+    values.extend(x.chars().map(|c| Word::from(c)));
+    Instruction {
+        tt: InstructionType::INST_PUSH_STR,
+        values: Some(values)
+    }
+}
+
+pub fn DEFINE_SYSCALL(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_SYSCALL,
+        values: Some(vec![Word::from(x)])
+    }
+}
+

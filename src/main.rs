@@ -1,5 +1,5 @@
 use machine::bytecode::ByteCodeCompiler;
-
+use core::arch::asm;
 mod machine;
 
 fn main() {
