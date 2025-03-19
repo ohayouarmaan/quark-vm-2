@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use super::bytecode::ByteCodeCompiler;
 use half::f16;
 
@@ -42,13 +43,16 @@ impl From<char> for Word {
 #[derive(Debug, Clone, Copy)]
 pub enum StackValues{
     U16(u16),
-    Pointer(*const u8)
+    Pointer(*const u16)
 }
 
 #[derive(Debug)]
 pub struct QuarkVM {
     pub stack: [StackValues; MAX_STACK_SIZE],
-    pub str_stack: Vec<u8>,
+    pub str_stack: Vec<u16>,
+    pub memory: Vec<u16>,
+    pub free_list: Vec<(*const u16, u16)>,
+    pub allocated_memory: HashMap<*const u16, u16>,
     pub sp: i16,
     pub pc: i16,
     pub running: bool,
@@ -61,6 +65,9 @@ impl Default for QuarkVM {
         Self {
             stack: [StackValues::U16(0); MAX_STACK_SIZE],
             str_stack: vec![],
+            memory: vec![],
+            free_list: vec![],
+            allocated_memory: HashMap::new(),
             sp: -1,
             pc: 0,
             running: false,
@@ -91,6 +98,7 @@ pub enum InstructionType {
     INST_JMPNEQ,
     INST_JMPNZ,
     INST_PUSH_STR,
+    INST_ALLOC,
     INST_SYSCALL,
 }
 
@@ -105,7 +113,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 19 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 20 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -211,6 +219,13 @@ pub fn DEFINE_PUSH_STR(x: &str) -> Instruction {
 pub fn DEFINE_SYSCALL(x: u16) -> Instruction {
     Instruction {
         tt: InstructionType::INST_SYSCALL,
+        values: Some(vec![Word::from(x)])
+    }
+}
+
+pub fn DEFINE_ALLOC(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_ALLOC,
         values: Some(vec![Word::from(x)])
     }
 }
