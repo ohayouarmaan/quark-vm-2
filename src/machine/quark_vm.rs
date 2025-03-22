@@ -1,6 +1,6 @@
 use crate::machine::machine_types::*;
 use core::arch::asm;
-use std::{collections::HashMap, error::Error, ops::Index};
+use std::collections::HashMap;
 
 use super::bytecode::ByteCodeCompiler;
 const MAX_STACK_SIZE: usize = 4096;
@@ -518,7 +518,6 @@ impl QuarkVM {
         while self.running {
             self.determine_function();
             if (self.pc as usize) >= self.instructions.len() {
-                println!("DOING SOMETHING");
                 self.running = false;
             }
         }
