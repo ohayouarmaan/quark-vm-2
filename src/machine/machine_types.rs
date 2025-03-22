@@ -10,6 +10,7 @@ pub enum Word {
     Char(char),
     U16(u16),
     F16(f16),
+    I16(i16),
 }
 
 impl Word {
@@ -17,6 +18,7 @@ impl Word {
         match self {
             Self::U16(x) => x.to_be_bytes(),
             Self::F16(x) => x.to_be_bytes(),
+            Self::I16(x) => x.to_be_bytes(),
             Self::Char(c) => (*c as u16).to_be_bytes()
         }
     }
@@ -40,21 +42,29 @@ impl From<char> for Word {
     }
 }
 
+impl From<i16> for Word {
+    fn from(value: i16) -> Self {
+        return Self::I16(value);
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum StackValues{
     U16(u16),
-    Pointer(*const u16)
+    I16(i16),
+    Pointer(*const StackValues)
 }
 
 #[derive(Debug)]
 pub struct QuarkVM {
     pub stack: [StackValues; MAX_STACK_SIZE],
-    pub str_stack: Vec<u16>,
     pub memory: Vec<u16>,
-    pub free_list: Vec<(*const u16, u16)>,
-    pub allocated_memory: HashMap<*const u16, u16>,
+    pub heap: Vec<StackValues>,
+    pub constant_pools: [StackValues; 4096],
+    pub free_list: Vec<(*mut StackValues, u16)>,
+    pub allocated_memory: HashMap<*mut StackValues, u16>,
     pub sp: i16,
-    pub pc: i16,
+    pub pc: u16,
     pub running: bool,
     pub instructions: Vec<Instruction>,
     pub byte_code_file: Option<ByteCodeCompiler>
@@ -64,8 +74,9 @@ impl Default for QuarkVM {
     fn default() -> Self {
         Self {
             stack: [StackValues::U16(0); MAX_STACK_SIZE],
-            str_stack: vec![],
             memory: vec![],
+            heap: vec![],
+            constant_pools: [StackValues::U16(0); 4096],
             free_list: vec![],
             allocated_memory: HashMap::new(),
             sp: -1,
@@ -100,6 +111,11 @@ pub enum InstructionType {
     INST_PUSH_STR,
     INST_ALLOC,
     INST_SYSCALL,
+    INST_DUP,
+    INST_INSWAP,
+    INST_PRINT,
+    INST_LOAD,
+    INST_STORE,
 }
 
 impl Default for InstructionType {
@@ -113,7 +129,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 20 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 25 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -133,9 +149,10 @@ impl Instruction {
         if let Some(values) = &self.values {
             for value in values {
                 match value {
-                    Word::U16(_) => buffer.push(0x00),
-                    Word::F16(_) => buffer.push(0x01),
-                    Word::Char(_) => buffer.push(0x10),
+                    Word::U16(_) => buffer.push(0x000),
+                    Word::F16(_) => buffer.push(0x001),
+                    Word::Char(_) => buffer.push(0x010),
+                    Word::I16(_) => buffer.push(0x011),
                 }
                 buffer.extend_from_slice(&value.to_be_bytes());
             }
@@ -186,21 +203,21 @@ pub fn DEFINE_SUB() -> Instruction {
     }
 }
 
-pub fn DEFINE_JMPZ(x: u16) -> Instruction {
+pub fn DEFINE_JMPZ(x: i16) -> Instruction {
     return Instruction {
         tt: InstructionType::INST_JMPZ,
         values: Some(vec![Word::from(x)])
     }
 }
 
-pub fn DEFINE_JMPEQ(x: u16) -> Instruction {
+pub fn DEFINE_JMPEQ(x: i16) -> Instruction {
     return Instruction {
         tt: InstructionType::INST_JMPEQ,
         values: Some(vec![Word::from(x)])
     }
 }
 
-pub fn DEFINE_JMPNZ(x: u16) -> Instruction {
+pub fn DEFINE_JMPNZ(x: i16) -> Instruction {
     return Instruction {
         tt: InstructionType::INST_JMPNZ,
         values: Some(vec![Word::from(x)])
@@ -230,3 +247,37 @@ pub fn DEFINE_ALLOC(x: u16) -> Instruction {
     }
 }
 
+pub fn DEFINE_DUP() -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_DUP,
+        values: None
+    }
+}
+
+pub fn DEFINE_INSWAP(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_INSWAP,
+        values: Some(vec![Word::from(x)])
+    }
+}
+
+pub fn DEFINE_PRINT() -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_PRINT,
+        values: None
+    }
+}
+
+pub fn DEFINE_LOAD(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_LOAD,
+        values: Some(vec![Word::from(x)])
+    }
+}
+
+pub fn DEFINE_STORE(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_STORE,
+        values: Some(vec![Word::from(x)])
+    }
+}

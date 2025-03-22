@@ -51,6 +51,9 @@ impl ByteCodeCompiler {
                     2 => {
                         args.push(Word::Char(char::from_u32(u16::from_be_bytes(arg.to_be_bytes()) as u32).expect("QUARMVM: Error while decoding character")));
                     }
+                    3 => {
+                        args.push(Word::I16(i16::from_be_bytes([buffer[i - 2 + x as usize], buffer[i - 2 + x as usize + 1]])));
+                    }
                     _ => {
                         panic!("QUARMVM: Unknown argument type while parsing the qasm file");
                     }
