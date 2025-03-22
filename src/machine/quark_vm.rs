@@ -1,9 +1,15 @@
 use crate::machine::machine_types::*;
 use core::arch::asm;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Pointer, usize};
 
 use super::bytecode::ByteCodeCompiler;
 const MAX_STACK_SIZE: usize = 4096;
+
+use std::any::type_name;
+
+fn type_of<T>(_: T) -> &'static str {
+    type_name::<T>()
+}
 
 impl QuarkVM {
     pub fn new(byte_code_compiler: ByteCodeCompiler) -> Self {
@@ -19,36 +25,27 @@ impl QuarkVM {
             running: true,
 
             instructions: vec![
-                DEFINE_PUSH(10),      // n (change this for different Fibonacci numbers)
-                DEFINE_STORE(0),      // Store n in memory[0]
-                DEFINE_PUSH(0),       // Base case: Fib(0) = 0
-                DEFINE_STORE(1),      // Store Fib(0) in memory[1]
-                DEFINE_LOAD(1),       // Load Fib(0)
-                DEFINE_PRINT(),       // Print Fib(0)
-                DEFINE_PUSH(1),       // Base case: Fib(1) = 1
-                DEFINE_STORE(2),      // Store Fib(1) in memory[2]
-                DEFINE_LOAD(2),       // Load Fib(1)
-                DEFINE_PRINT(),       // Print Fib(1)
-                DEFINE_LOAD(0),       // Load n
-                DEFINE_PUSH(2),       // Push 2
-                DEFINE_SUB(),         // n - 2
-                DEFINE_JMPZ(20),      // If n <= 1, jump to END (index 20)
-                DEFINE_LOAD(1),       // Load Fib(n-1)
-                DEFINE_LOAD(2),       // Load Fib(n-2)
-                DEFINE_ADD(),         // Fib(n) = Fib(n-1) + Fib(n-2)
-                DEFINE_STORE(3),      // Store new Fib(n) in memory[3]
-                DEFINE_LOAD(3),       // Load new Fib(n)
-                DEFINE_PRINT(),       // Print Fib(n)
-                DEFINE_LOAD(2),       // Move Fib(n-1) to Fib(n-2)
-                DEFINE_STORE(1),      // Store in memory[1]
-                DEFINE_LOAD(3),       // Move Fib(n) to Fib(n-1)
-                DEFINE_STORE(2),      // Store in memory[2]
-                DEFINE_LOAD(0),       // Load n
-                DEFINE_PUSH(1),       // Push 1
-                DEFINE_SUB(),         // n = n - 1
-                DEFINE_STORE(0),      // Store new n
-                DEFINE_LOAD(0),
-                DEFINE_JMPNZ(10),      // If n > 1, jump back to LOOP (index 9)
+
+                // Allocate buffer (16 bytes)
+                DEFINE_ALLOC_RAW(16),       // Allocate and get pointer
+                DEFINE_STORE(0),      // Store pointer in memory[0]
+
+                // Call syscall 3 (read)
+                DEFINE_PUSH(128),
+                DEFINE_LOAD(Some(0)),       // Load pointer (buffer address) rsi
+                DEFINE_PUSH(0),      // Push buffer size rdi
+                DEFINE_PUSH(0),       // rax
+                DEFINE_SYSCALL(3),    // Call read(stdin, buffer, 16)
+
+                // Print the buffer contents
+                DEFINE_LOAD(Some(0)),       // Load pointer
+                DEFINE_DEREF(),
+                DEFINE_PRINT(),
+                DEFINE_PUSH(1),
+                DEFINE_ADD(),
+                DEFINE_DEREF(),
+                DEFINE_PRINT()
+                
             ],
             byte_code_file: Some(byte_code_compiler)
         }
@@ -87,8 +84,8 @@ impl QuarkVM {
         }
     }
 
-    pub fn allocate(&mut self, size: u16) -> Result<*mut StackValues, ()> {
-        for (i, (ptr, free_size)) in self.free_list.iter_mut().enumerate() {
+    pub fn allocate(&mut self, size: u16, pointer_type: PointerType) -> Result<*mut (), ()> {
+        for (i, (ptr, (free_size, _))) in self.free_list.iter_mut().enumerate() {
             if *free_size >= size {
                 let allocated_start = *ptr;
                 *ptr = ptr.wrapping_add(size.into());
@@ -96,52 +93,112 @@ impl QuarkVM {
                 if *free_size == 0 {
                     self.free_list.remove(i);
                 }
-                self.allocated_memory.insert(allocated_start, size);
+                self.allocated_memory.insert(allocated_start, (size, pointer_type));
                 println!("RETURNING FROM FREELIST");
                 return Ok(allocated_start);
             }
         }
-        let starting_index = self.memory.len();
-        for _ in 0..size {
-            self.heap.push(StackValues::U16(0));
+        let starting_index = match pointer_type {
+            PointerType::RawPointer => self.memory.len(),
+            PointerType::StackValuesPointer => self.heap.len()
+        };
+        if pointer_type == PointerType::StackValuesPointer {
+            for _ in 0..size {
+                self.heap.push(StackValues::U16(0));
+            }
+            self.allocated_memory.insert(&mut self.heap[starting_index] as *mut StackValues as *mut (), (size, pointer_type));
+            Ok(&mut self.heap[starting_index] as *mut StackValues as *mut ())
+        } else {
+            for _ in 0..size {
+                self.memory.push(0);
+            }
+            self.allocated_memory.insert(&mut self.memory[starting_index] as *mut u8 as *mut (), (size, pointer_type));
+            Ok(&mut self.memory[starting_index] as *mut u8 as *mut ())
         }
-        println!("RETURNING NOT FROM FREELIST: {:?}", &self.memory[starting_index] as *const u16);
-        self.allocated_memory.insert(&mut self.heap[starting_index] as *mut StackValues, size);
-        Ok(&mut self.heap[starting_index] as *mut StackValues)
     }
 
-    pub fn deallocate(&mut self, ptr: *mut StackValues) {
+    pub fn deallocate(&mut self, ptr: *mut ()) {
         let removed_value = self.allocated_memory.remove(&ptr);
         if let Some(freed_size) = removed_value {
-            self.free_list.push((ptr, freed_size));
+            self.free_list.push((ptr, (freed_size.0, PointerType::RawPointer)));
         }
-        
-        let mut i = 0;
-        while i < self.free_list.len() - 1 {
-            let (start1, size1) = self.free_list[i];
-            let (start2, size2) = self.free_list[i + 1];
 
-            if start1.wrapping_add(size1.into()) == start2 {
-                // Merge blocks
-                self.free_list[i] = (start1, size1 + size2);
-                self.free_list.remove(i + 1);
-            } else {
-                i += 1;
+        // Sort free list before merging
+        self.free_list.sort_by_key(|&(ptr, _)| ptr as usize);
+
+        let mut new_free_list: Vec<(*mut (), (u16, PointerType))> = Vec::new();
+        let mut i = 0;
+
+        while i < self.free_list.len() {
+            let (start1, (size1, ptr1type)) = &self.free_list[i];
+
+            if i + 1 < self.free_list.len() {
+                let (start2, (size2, ptr2type)) = &self.free_list[i + 1];
+
+                if ptr1type == ptr2type {
+                    let can_merge = match ptr1type {
+                        PointerType::StackValuesPointer => 
+                        (*start1 as *mut StackValues).wrapping_add(*size1 as usize) == (*start2 as *mut StackValues),
+                        PointerType::RawPointer => 
+                        (*start1 as *mut u8).wrapping_add(*size1 as usize) == (*start2 as *mut u8),
+                    };
+
+                    if can_merge {
+                        // Merge blocks
+                        new_free_list.push((*start1, (*size1 + *size2, *ptr1type)));
+                        i += 2; // Skip the next element since it's merged
+                        continue;
+                    }
+                }
             }
+
+            // If no merge, add the current block as is
+            new_free_list.push((*start1, (*size1, *ptr1type)));
+            i += 1;
+        }
+
+        // Replace the old list with the new merged list
+        self.free_list = new_free_list;
+    }
+
+    pub fn print(s: StackValues) {
+        if let StackValues::Pointer(v) = s {
+            unsafe { println!("{:?}", *v) };
+        } else {
+            println!("{:?}", s);
         }
     }
 
     pub fn determine_function(&mut self) {
         match self.instructions[self.pc as usize].tt {
             InstructionType::INST_ADD => {
-                if let StackValues::U16(a) = self.pop_stack() {
-                    if let StackValues::U16(b) = self.pop_stack() {
+                let t = self.pop_stack();
+                println!("T: {:?}", t);
+                if let StackValues::U16(a) = t {
+                    let y = self.pop_stack();
+                    if let StackValues::U16(b) = y {
                         self.push_stack(StackValues::U16(a + b));
+                    } else if let StackValues::Pointer(b) = y {
+                        if self.allocated_memory[&b].1 == PointerType::StackValuesPointer {
+                            self.push_stack(StackValues::Pointer((b as *mut StackValues).wrapping_add(a as usize) as *mut ()));
+                        } else {
+                            self.push_stack(StackValues::Pointer((b as *mut u8).wrapping_add(a as usize) as *mut ()));
+                        }
                     }
-                }else if let StackValues::I16(a) = self.pop_stack() {
+                } else if let StackValues::I16(a) = t {
                     if let StackValues::I16(b) = self.pop_stack() {
                         self.push_stack(StackValues::I16(a + b));
                     }
+                } else if let StackValues::Pointer(a) = t {
+                    if let StackValues::U16(b) = self.pop_stack() {
+                        if self.allocated_memory[&a].1 == PointerType::StackValuesPointer {
+                            self.push_stack(StackValues::Pointer((a as *mut StackValues).wrapping_add(b as usize) as *mut ()));
+                        } else {
+                            self.push_stack(StackValues::Pointer((a as *mut u8).wrapping_add(b as usize) as *mut ()));
+                        }
+                    }
+                } else {
+                    println!("WTF IS A : {:?}", t);
                 }
                 self.pc += 1;
             },
@@ -200,6 +257,14 @@ impl QuarkVM {
                 } else if let StackValues::I16(a) = self.pop_stack() {
                     if let StackValues::I16(b) = self.pop_stack() {
                         self.push_stack(StackValues::I16(b - a));
+                    }
+                } else if let StackValues::Pointer(a) = self.pop_stack() {
+                    if let StackValues::U16(b) = self.pop_stack() {
+                        if self.allocated_memory[&a].1 == PointerType::StackValuesPointer {
+                            self.push_stack(StackValues::Pointer((a as *mut StackValues).wrapping_sub(b as usize) as *mut ()));
+                        } else {
+                            self.push_stack(StackValues::Pointer((a as *mut u8).wrapping_sub(b as usize) as *mut ()));
+                        }
                     }
                 }
                 self.pc += 1;
@@ -403,12 +468,12 @@ impl QuarkVM {
                     }
 
                     str_buffer.push(StackValues::U16('\0' as u16));
-                    let starting_pointer = self.allocate(str_len + 1);
+                    let starting_pointer = self.allocate(str_len + 1, PointerType::StackValuesPointer);
                     if let Ok(ptr) = starting_pointer {
                         for i in 0..(str_len + 1) {
                             unsafe {
-                                let dest = ptr.add(i as usize);
-                                *dest = str_buffer[i as usize];
+                                let dest = (ptr as *mut StackValues).add(i as usize);
+                                *dest.cast::<StackValues>() = str_buffer[i as usize];
                             }
                         }
                         self.push_stack(StackValues::Pointer(ptr));
@@ -439,6 +504,7 @@ impl QuarkVM {
                     }
 
                     let result: isize;
+                    println!("Calling Syscall rax={:?} rdi={:?} rsi={:?} rdx={:?}", syscall_num, args[0], args[1], args[2]);
                     unsafe {
                         asm!(
                             "syscall",
@@ -462,7 +528,17 @@ impl QuarkVM {
             InstructionType::INST_ALLOC => {
                 if let Some(values) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(size) = values[0] {
-                        if let Ok(ptr) = self.allocate(size) {
+                        if let Ok(ptr) = self.allocate(size, PointerType::StackValuesPointer) {
+                            self.push_stack(StackValues::Pointer(ptr));
+                        }
+                    }
+                }
+                self.pc += 1;
+            }
+            InstructionType::INST_ALLOC_RAW => {
+                if let Some(values) = &self.instructions[self.pc as usize].values {
+                    if let Word::U16(size) = values[0] {
+                        if let Ok(ptr) = self.allocate(size, PointerType::RawPointer) {
                             self.push_stack(StackValues::Pointer(ptr));
                         }
                     }
@@ -484,7 +560,7 @@ impl QuarkVM {
                 self.pc += 1;
             }
             InstructionType::INST_PRINT => {
-                println!("{:?}", self.stack[self.sp as usize]);
+                Self::print(self.stack[self.sp as usize]);
                 self.pc += 1;
             }
             InstructionType::INST_STORE => {
@@ -496,6 +572,7 @@ impl QuarkVM {
                 self.pc += 1;
             }
             InstructionType::INST_LOAD => {
+                println!("CALLED LOAD PC: {:?}", self.pc);
                 if let Some(value) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(index) = value[0] {
                         self.push_stack(self.constant_pools[index as usize]);
@@ -503,14 +580,36 @@ impl QuarkVM {
                 }
                 self.pc += 1;
             }
+            InstructionType::INST_DEREF => {
+                let stack_ptr = self.pop_stack();
+                if let StackValues::Pointer(x) = stack_ptr {
+                    // change this so that it also adds the size of the stuffs to the pointer and
+                    // then check the range or something idk
+                    if self.allocated_memory[&x].1 == PointerType::RawPointer {
+                        if let Ok(ptr) = self.allocate(self.allocated_memory[&x].0, PointerType::StackValuesPointer) {
+                            for i in 0..self.allocated_memory[&x].0 {
+                                unsafe {
+                                    *((ptr as *mut StackValues).wrapping_add(i as usize )) = StackValues::U16(*((x as *mut u8).wrapping_add(i as usize)) as u16); 
+                                };
+                            }
+                            self.push_stack(StackValues::Pointer(ptr));
+                        }
+                    } else {
+                        unsafe { self.push_stack(*(x as *mut StackValues)) };
+                    }
+                }
+                self.pc += 1;
+                self.debug_stack();
+            }
         }
     }
 
     pub fn debug_stack(&self) {
         println!("______________________________________________________________________");
-        println!("SP: {:?} stack: {:?} pc: {:?}", self.sp, &self.stack[0..(self.sp as usize)], self.pc);
+        println!("SP: {:?} stack: {:?} pc: {:?}", self.sp, &self.stack[0..(self.sp as usize + 1)], self.pc);
         println!("MEMORY: {:?}", self.memory);
         println!("HEAP: {:?}", self.heap);
+        println!("ALLOCATIONS: {:?}", self.allocated_memory);
         println!("______________________________________________________________________");
     }
 

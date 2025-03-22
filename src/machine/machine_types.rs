@@ -52,17 +52,23 @@ impl From<i16> for Word {
 pub enum StackValues{
     U16(u16),
     I16(i16),
-    Pointer(*const StackValues)
+    Pointer(*mut ())
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+pub enum PointerType {
+    RawPointer,
+    StackValuesPointer
 }
 
 #[derive(Debug)]
 pub struct QuarkVM {
     pub stack: [StackValues; MAX_STACK_SIZE],
-    pub memory: Vec<u16>,
+    pub memory: Vec<u8>,
     pub heap: Vec<StackValues>,
     pub constant_pools: [StackValues; 4096],
-    pub free_list: Vec<(*mut StackValues, u16)>,
-    pub allocated_memory: HashMap<*mut StackValues, u16>,
+    pub free_list: Vec<(*mut (), (u16, PointerType))>,
+    pub allocated_memory: HashMap<*mut (), (u16, PointerType)>,
     pub sp: i16,
     pub pc: u16,
     pub running: bool,
@@ -110,12 +116,14 @@ pub enum InstructionType {
     INST_JMPNZ,
     INST_PUSH_STR,
     INST_ALLOC,
+    INST_ALLOC_RAW,
     INST_SYSCALL,
     INST_DUP,
     INST_INSWAP,
     INST_PRINT,
     INST_LOAD,
     INST_STORE,
+    INST_DEREF,
 }
 
 impl Default for InstructionType {
@@ -129,7 +137,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 25 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 26 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -247,6 +255,13 @@ pub fn DEFINE_ALLOC(x: u16) -> Instruction {
     }
 }
 
+pub fn DEFINE_ALLOC_RAW(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_ALLOC_RAW,
+        values: Some(vec![Word::from(x)])
+    }
+}
+
 pub fn DEFINE_DUP() -> Instruction {
     Instruction {
         tt: InstructionType::INST_DUP,
@@ -268,10 +283,16 @@ pub fn DEFINE_PRINT() -> Instruction {
     }
 }
 
-pub fn DEFINE_LOAD(x: u16) -> Instruction {
-    Instruction {
-        tt: InstructionType::INST_LOAD,
-        values: Some(vec![Word::from(x)])
+pub fn DEFINE_LOAD(x: Option<u16>) -> Instruction {
+    return match x {
+        Some(x) => Instruction {
+            tt: InstructionType::INST_LOAD,
+            values: Some(vec![Word::from(x)])
+        },
+        None => Instruction {
+            tt: InstructionType::INST_LOAD,
+            values: None
+        }
     }
 }
 
@@ -279,5 +300,12 @@ pub fn DEFINE_STORE(x: u16) -> Instruction {
     Instruction {
         tt: InstructionType::INST_STORE,
         values: Some(vec![Word::from(x)])
+    }
+}
+
+pub fn DEFINE_DEREF() -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_DEREF,
+        values: None
     }
 }
