@@ -30,22 +30,23 @@ impl QuarkVM {
                 DEFINE_ALLOC_RAW(16),       // Allocate and get pointer
                 DEFINE_STORE(0),      // Store pointer in memory[0]
 
-                // Call syscall 3 (read)
                 DEFINE_PUSH(128),
-                DEFINE_LOAD(Some(0)),       // Load pointer (buffer address) rsi
-                DEFINE_PUSH(0),      // Push buffer size rdi
-                DEFINE_PUSH(0),       // rax
-                DEFINE_SYSCALL(3),    // Call read(stdin, buffer, 16)
-
-                // Print the buffer contents
-                DEFINE_LOAD(Some(0)),       // Load pointer
+                DEFINE_LOAD(Some(0)),
+                DEFINE_PUSH(0),
+                DEFINE_PUSH(0),
+                DEFINE_SYSCALL(3),
+                DEFINE_LOAD(Some(0)),
+                DEFINE_DEREF(),
+                DEFINE_STORE(1),
+                DEFINE_LOAD(Some(1)),
                 DEFINE_DEREF(),
                 DEFINE_PRINT(),
+                DEFINE_LOAD(Some(1)),
                 DEFINE_PUSH(1),
                 DEFINE_ADD(),
                 DEFINE_DEREF(),
-                DEFINE_PRINT()
-                
+                DEFINE_PRINT(),
+                DEFINE_PUSH_STR("wow")
             ],
             byte_code_file: Some(byte_code_compiler)
         }
@@ -173,16 +174,26 @@ impl QuarkVM {
         match self.instructions[self.pc as usize].tt {
             InstructionType::INST_ADD => {
                 let t = self.pop_stack();
-                println!("T: {:?}", t);
                 if let StackValues::U16(a) = t {
                     let y = self.pop_stack();
                     if let StackValues::U16(b) = y {
                         self.push_stack(StackValues::U16(a + b));
                     } else if let StackValues::Pointer(b) = y {
-                        if self.allocated_memory[&b].1 == PointerType::StackValuesPointer {
-                            self.push_stack(StackValues::Pointer((b as *mut StackValues).wrapping_add(a as usize) as *mut ()));
-                        } else {
-                            self.push_stack(StackValues::Pointer((b as *mut u8).wrapping_add(a as usize) as *mut ()));
+                        for (&ptr, &(size, ptr_type)) in self.allocated_memory.clone().iter() {
+                            unsafe {
+                                let adjusted_ptr = (b as *mut u8).wrapping_add(a as usize) as *mut ();
+                                if ptr_type == PointerType::RawPointer {
+                                    if (adjusted_ptr as *mut u8) >= (ptr as *mut u8) 
+                                    && (adjusted_ptr as *mut u8) <= (ptr as *mut u8).add(size as usize) 
+                                    {
+                                        self.push_stack(StackValues::Pointer(adjusted_ptr));
+                                        break;
+                                    }
+                                } else if ptr_type == PointerType::StackValuesPointer && (b as *mut StackValues) >= (ptr as *mut StackValues) && (b as *mut StackValues) < (ptr as *mut StackValues).add(size as usize) {
+                                    self.push_stack(StackValues::Pointer((b as *mut StackValues).wrapping_add(a as usize) as *mut ()));
+                                    break;
+                                }
+                            }
                         }
                     }
                 } else if let StackValues::I16(a) = t {
@@ -191,17 +202,29 @@ impl QuarkVM {
                     }
                 } else if let StackValues::Pointer(a) = t {
                     if let StackValues::U16(b) = self.pop_stack() {
-                        if self.allocated_memory[&a].1 == PointerType::StackValuesPointer {
-                            self.push_stack(StackValues::Pointer((a as *mut StackValues).wrapping_add(b as usize) as *mut ()));
-                        } else {
-                            self.push_stack(StackValues::Pointer((a as *mut u8).wrapping_add(b as usize) as *mut ()));
+                        for (&ptr, &(size, ptr_type)) in self.allocated_memory.iter() {
+                            unsafe {
+                                let adjusted_ptr = (a as *mut u8).wrapping_add(b as usize) as *mut ();
+
+                                if ptr_type == PointerType::RawPointer {
+                                    if (adjusted_ptr as *mut u8) >= (ptr as *mut u8) 
+                                    && (adjusted_ptr as *mut u8) < (ptr as *mut u8).add(size as usize) 
+                                    {
+                                        self.push_stack(StackValues::Pointer(adjusted_ptr));
+                                        return;
+                                    }
+                                } else if ptr_type == PointerType::StackValuesPointer && (adjusted_ptr as *mut StackValues) >= (ptr as *mut StackValues) && (adjusted_ptr as *mut StackValues) < (ptr as *mut StackValues).add(size as usize) {
+                                    self.push_stack(StackValues::Pointer(adjusted_ptr));
+                                    return;
+                                }
+                            }
                         }
                     }
                 } else {
                     println!("WTF IS A : {:?}", t);
                 }
                 self.pc += 1;
-            },
+            }
             InstructionType::INST_PUSH => {
                 match &self.instructions[self.pc as usize].values {
                     Some(value) => {
@@ -478,8 +501,6 @@ impl QuarkVM {
                         }
                         self.push_stack(StackValues::Pointer(ptr));
                     }
-                    panic!("QUARMVM: Error, not enough memory left.");
-                    
                 }
 
                 self.pc += 1;
@@ -504,7 +525,6 @@ impl QuarkVM {
                     }
 
                     let result: isize;
-                    println!("Calling Syscall rax={:?} rdi={:?} rsi={:?} rdx={:?}", syscall_num, args[0], args[1], args[2]);
                     unsafe {
                         asm!(
                             "syscall",
@@ -518,9 +538,6 @@ impl QuarkVM {
                             lateout("rax") result,
                         );
                     }
-
-                    println!("Syscall result: {}", result);
-
                     self.push_stack(StackValues::U16(result as u16));
                 }
                 self.pc += 1;
@@ -554,7 +571,7 @@ impl QuarkVM {
             InstructionType::INST_INSWAP => {
                 if let Some(value) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(index) = value[0] {
-                        self.stack.swap(self.sp as usize, index as usize);
+                        self.stack.swap(self.sp as usize, self.sp.wrapping_sub(index as i16) as usize);
                     }
                 }
                 self.pc += 1;
@@ -572,7 +589,6 @@ impl QuarkVM {
                 self.pc += 1;
             }
             InstructionType::INST_LOAD => {
-                println!("CALLED LOAD PC: {:?}", self.pc);
                 if let Some(value) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(index) = value[0] {
                         self.push_stack(self.constant_pools[index as usize]);
@@ -583,23 +599,27 @@ impl QuarkVM {
             InstructionType::INST_DEREF => {
                 let stack_ptr = self.pop_stack();
                 if let StackValues::Pointer(x) = stack_ptr {
-                    // change this so that it also adds the size of the stuffs to the pointer and
-                    // then check the range or something idk
-                    if self.allocated_memory[&x].1 == PointerType::RawPointer {
-                        if let Ok(ptr) = self.allocate(self.allocated_memory[&x].0, PointerType::StackValuesPointer) {
-                            for i in 0..self.allocated_memory[&x].0 {
-                                unsafe {
-                                    *((ptr as *mut StackValues).wrapping_add(i as usize )) = StackValues::U16(*((x as *mut u8).wrapping_add(i as usize)) as u16); 
-                                };
+                    // Clone the data first to avoid borrowing issues
+                    for (&ptr, &(size, ptr_type)) in self.allocated_memory.clone().iter() {
+                        unsafe {
+                            if ptr_type == PointerType::RawPointer && (x as *mut u8) >= (ptr as *mut u8) && (x as *mut u8) < (ptr as *mut u8).add(size as usize) {
+                                if let Ok(all_ptr) = self.allocate(size, PointerType::StackValuesPointer) {
+                                    for i in 0..size {
+                                        let raw_byte = *((ptr as *mut u8).wrapping_add(i as usize));
+                                        *((all_ptr as *mut StackValues).wrapping_add(i as usize)) = StackValues::U16(raw_byte as u16);
+                                    }
+                                    self.push_stack(StackValues::Pointer(all_ptr));
+                                }
+                                break;
+                            } else if ptr_type == PointerType::StackValuesPointer && (x as *mut StackValues) >= (ptr as *mut StackValues) && (x as *mut StackValues) < (ptr as *mut StackValues).add(size as usize) {
+                                println!("DEREFING A STACKVALUE POINTER: {:?}", *(x as *mut StackValues));
+                                self.push_stack(*(x as *mut StackValues));
+                                break;
                             }
-                            self.push_stack(StackValues::Pointer(ptr));
                         }
-                    } else {
-                        unsafe { self.push_stack(*(x as *mut StackValues)) };
                     }
                 }
                 self.pc += 1;
-                self.debug_stack();
             }
         }
     }
