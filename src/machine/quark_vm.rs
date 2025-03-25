@@ -46,7 +46,8 @@ impl QuarkVM {
                 DEFINE_ADD(),
                 DEFINE_DEREF(),
                 DEFINE_PRINT(),
-                DEFINE_PUSH_STR("wow")
+                DEFINE_PUSH_STR("wow"),
+                DEFINE_REF()
             ],
             byte_code_file: Some(byte_code_compiler)
         }
@@ -619,6 +620,11 @@ impl QuarkVM {
                         }
                     }
                 }
+                self.pc += 1;
+            },
+            InstructionType::INST_REF => {
+                let value = self.pop_stack();
+                let s = std::mem::size_of::<StackValues>();
                 self.pc += 1;
             }
         }

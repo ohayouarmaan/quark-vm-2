@@ -124,6 +124,7 @@ pub enum InstructionType {
     INST_LOAD,
     INST_STORE,
     INST_DEREF,
+    INST_REF,
 }
 
 impl Default for InstructionType {
@@ -137,7 +138,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 26 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 27 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -306,6 +307,13 @@ pub fn DEFINE_STORE(x: u16) -> Instruction {
 pub fn DEFINE_DEREF() -> Instruction {
     Instruction {
         tt: InstructionType::INST_DEREF,
+        values: None
+    }
+}
+
+pub fn DEFINE_REF() -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_REF,
         values: None
     }
 }
