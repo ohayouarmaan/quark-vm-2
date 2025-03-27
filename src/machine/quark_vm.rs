@@ -625,6 +625,7 @@ impl QuarkVM {
             InstructionType::INST_REF => {
                 let value = self.pop_stack();
                 let s = std::mem::size_of::<StackValues>();
+                self.push_stack(StackValues::Pointer((&mut value) as &mut ()));
                 self.pc += 1;
             }
         }

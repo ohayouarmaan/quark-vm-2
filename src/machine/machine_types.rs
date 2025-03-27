@@ -26,25 +26,25 @@ impl Word {
 
 impl From<u16> for Word {
     fn from(value: u16) -> Self {
-        return Self::U16(value);
+        Self::U16(value)
     }
 }
 
 impl From<f16> for Word {
     fn from(value: f16) -> Self {
-        return Self::F16(value);
+        Self::F16(value)
     }
 }
 
 impl From<char> for Word {
     fn from(value: char) -> Self {
-        return Self::Char(value);
+        Self::Char(value)
     }
 }
 
 impl From<i16> for Word {
     fn from(value: i16) -> Self {
-        return Self::I16(value);
+        Self::I16(value)
     }
 }
 
@@ -129,7 +129,7 @@ pub enum InstructionType {
 
 impl Default for InstructionType {
     fn default() -> Self {
-        return Self::INST_NOOP;
+        Self::INST_NOOP
     }
 }
 
@@ -166,68 +166,68 @@ impl Instruction {
                 buffer.extend_from_slice(&value.to_be_bytes());
             }
         }
-        return buffer;
+        buffer
     }
 }
 
 pub fn DEFINE_PUSH(x: u16) -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_PUSH,
         values: Some(vec![Word::from(x)])
     }
 }
 
 pub fn DEFINE_POP() -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_POP,
         values: None
     }
 }
 
 pub fn DEFINE_ADD() -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_ADD,
         values: None
     }
 }
 
 pub fn DEFINE_MUL() -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_MUL,
         values: None
     }
 }
 
 pub fn DEFINE_DIV() -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_DIV,
         values: None
     }
 }
 
 pub fn DEFINE_SUB() -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_SUB,
         values: None
     }
 }
 
 pub fn DEFINE_JMPZ(x: i16) -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_JMPZ,
         values: Some(vec![Word::from(x)])
     }
 }
 
 pub fn DEFINE_JMPEQ(x: i16) -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_JMPEQ,
         values: Some(vec![Word::from(x)])
     }
 }
 
 pub fn DEFINE_JMPNZ(x: i16) -> Instruction {
-    return Instruction {
+    Instruction {
         tt: InstructionType::INST_JMPNZ,
         values: Some(vec![Word::from(x)])
     }
@@ -285,7 +285,7 @@ pub fn DEFINE_PRINT() -> Instruction {
 }
 
 pub fn DEFINE_LOAD(x: Option<u16>) -> Instruction {
-    return match x {
+    match x {
         Some(x) => Instruction {
             tt: InstructionType::INST_LOAD,
             values: Some(vec![Word::from(x)])
