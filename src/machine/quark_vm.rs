@@ -1,6 +1,6 @@
 use crate::machine::machine_types::*;
 use core::arch::asm;
-use std::{collections::HashMap, fmt::Pointer, usize};
+use std::{collections::HashMap, usize};
 
 use super::bytecode::ByteCodeCompiler;
 const MAX_STACK_SIZE: usize = 4096;
@@ -40,14 +40,18 @@ impl QuarkVM {
                 DEFINE_STORE(1),
                 DEFINE_LOAD(Some(1)),
                 DEFINE_DEREF(),
-                DEFINE_PRINT(),
+                //DEFINE_PRINT(),
                 DEFINE_LOAD(Some(1)),
                 DEFINE_PUSH(1),
                 DEFINE_ADD(),
                 DEFINE_DEREF(),
-                DEFINE_PRINT(),
+                //DEFINE_PRINT(),
                 DEFINE_PUSH_STR("wow"),
-                DEFINE_REF()
+                DEFINE_REF(),
+                DEBUG(),
+                DEFINE_DEREF(),
+                DEFINE_PRINT(),
+                DEBUG(),
             ],
             byte_code_file: Some(byte_code_compiler)
         }
@@ -146,20 +150,17 @@ impl QuarkVM {
                     };
 
                     if can_merge {
-                        // Merge blocks
                         new_free_list.push((*start1, (*size1 + *size2, *ptr1type)));
-                        i += 2; // Skip the next element since it's merged
+                        i += 2;
                         continue;
                     }
                 }
             }
 
-            // If no merge, add the current block as is
             new_free_list.push((*start1, (*size1, *ptr1type)));
             i += 1;
         }
 
-        // Replace the old list with the new merged list
         self.free_list = new_free_list;
     }
 
@@ -601,6 +602,7 @@ impl QuarkVM {
                 let stack_ptr = self.pop_stack();
                 if let StackValues::Pointer(x) = stack_ptr {
                     // Clone the data first to avoid borrowing issues
+
                     for (&ptr, &(size, ptr_type)) in self.allocated_memory.clone().iter() {
                         unsafe {
                             if ptr_type == PointerType::RawPointer && (x as *mut u8) >= (ptr as *mut u8) && (x as *mut u8) < (ptr as *mut u8).add(size as usize) {
@@ -613,7 +615,7 @@ impl QuarkVM {
                                 }
                                 break;
                             } else if ptr_type == PointerType::StackValuesPointer && (x as *mut StackValues) >= (ptr as *mut StackValues) && (x as *mut StackValues) < (ptr as *mut StackValues).add(size as usize) {
-                                println!("DEREFING A STACKVALUE POINTER: {:?}", *(x as *mut StackValues));
+                                println!("DEREFING A STACKVALUE POINTER: {:?}", (x));
                                 self.push_stack(*(x as *mut StackValues));
                                 break;
                             }
@@ -623,9 +625,15 @@ impl QuarkVM {
                 self.pc += 1;
             },
             InstructionType::INST_REF => {
-                let value = self.pop_stack();
+                let mut value = self.pop_stack();
                 let s = std::mem::size_of::<StackValues>();
-                self.push_stack(StackValues::Pointer((&mut value) as &mut ()));
+                let v = StackValues::Pointer(&mut value as *mut _ as *mut ());
+                self.push_stack(value);
+                self.push_stack(v);
+                self.pc += 1;
+            },
+            InstructionType::INST_DEBUG => {
+                self.debug_stack();
                 self.pc += 1;
             }
         }
