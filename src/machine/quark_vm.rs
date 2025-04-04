@@ -1,6 +1,6 @@
 use crate::machine::machine_types::*;
 use core::arch::asm;
-use std::{collections::HashMap, usize};
+use std::collections::HashMap;
 
 use super::bytecode::ByteCodeCompiler;
 const MAX_STACK_SIZE: usize = 4096;
@@ -26,9 +26,9 @@ impl QuarkVM {
 
             instructions: vec![
 
-                // Allocate buffer (16 bytes)
-                DEFINE_ALLOC_RAW(16),       // Allocate and get pointer
-                DEFINE_STORE(0),      // Store pointer in memory[0]
+                
+                DEFINE_ALLOC_RAW(16),
+                DEFINE_STORE(0),
 
                 DEFINE_PUSH(128),
                 DEFINE_LOAD(Some(0)),
@@ -48,7 +48,8 @@ impl QuarkVM {
                 //DEFINE_PRINT(),
                 DEFINE_PUSH_STR("wow"),
                 DEFINE_REF(),
-                DEBUG(),
+                //DEBUG(),
+                DEFINE_DEREF(),
                 DEFINE_DEREF(),
                 DEFINE_PRINT(),
                 DEBUG(),
@@ -104,10 +105,12 @@ impl QuarkVM {
                 return Ok(allocated_start);
             }
         }
+
         let starting_index = match pointer_type {
             PointerType::RawPointer => self.memory.len(),
             PointerType::StackValuesPointer => self.heap.len()
         };
+
         if pointer_type == PointerType::StackValuesPointer {
             for _ in 0..size {
                 self.heap.push(StackValues::U16(0));
@@ -334,6 +337,7 @@ impl QuarkVM {
                 if let StackValues::U16(a) = self.pop_stack() {
                     self.push_stack(StackValues::U16(!a));
                 }
+                self.pc += 1;
             },
             InstructionType::INST_SHL => {
                 if let StackValues::U16(a) = self.pop_stack() {
@@ -432,7 +436,7 @@ impl QuarkVM {
                             match &self.instructions[self.pc as usize].values {
                                 Some(value) => {
                                     if let Word::U16(v) = value[0] {
-                                        self.pc = v as u16;
+                                        self.pc = v;
                                     } else if let Word::I16(v) = value[0] {
                                         self.pc = v as u16;
                                     } else {
@@ -506,10 +510,12 @@ impl QuarkVM {
                 }
 
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_NOOP => {
                 self.pc += 1;
             },
+
             InstructionType::INST_SYSCALL => {
                 if let StackValues::U16(syscall_num) = self.pop_stack() {
                     let mut args: [usize; 6] = [0; 6];
@@ -543,7 +549,8 @@ impl QuarkVM {
                     self.push_stack(StackValues::U16(result as u16));
                 }
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_ALLOC => {
                 if let Some(values) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(size) = values[0] {
@@ -553,7 +560,8 @@ impl QuarkVM {
                     }
                 }
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_ALLOC_RAW => {
                 if let Some(values) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(size) = values[0] {
@@ -563,13 +571,15 @@ impl QuarkVM {
                     }
                 }
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_DUP => {
                 let value = self.pop_stack();
                 self.push_stack(value);
                 self.push_stack(value);
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_INSWAP => {
                 if let Some(value) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(index) = value[0] {
@@ -577,11 +587,13 @@ impl QuarkVM {
                     }
                 }
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_PRINT => {
                 Self::print(self.stack[self.sp as usize]);
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_STORE => {
                 if let Some(value) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(index) = value[0] {
@@ -589,7 +601,8 @@ impl QuarkVM {
                     }
                 }
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_LOAD => {
                 if let Some(value) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(index) = value[0] {
@@ -597,11 +610,11 @@ impl QuarkVM {
                     }
                 }
                 self.pc += 1;
-            }
+            },
+
             InstructionType::INST_DEREF => {
                 let stack_ptr = self.pop_stack();
                 if let StackValues::Pointer(x) = stack_ptr {
-                    // Clone the data first to avoid borrowing issues
 
                     for (&ptr, &(size, ptr_type)) in self.allocated_memory.clone().iter() {
                         unsafe {
@@ -624,14 +637,16 @@ impl QuarkVM {
                 }
                 self.pc += 1;
             },
+
             InstructionType::INST_REF => {
                 let mut value = self.pop_stack();
-                let s = std::mem::size_of::<StackValues>();
+                let _s = std::mem::size_of::<StackValues>();
                 let v = StackValues::Pointer(&mut value as *mut _ as *mut ());
                 self.push_stack(value);
                 self.push_stack(v);
                 self.pc += 1;
             },
+
             InstructionType::INST_DEBUG => {
                 self.debug_stack();
                 self.pc += 1;
