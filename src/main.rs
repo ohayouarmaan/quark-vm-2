@@ -7,7 +7,6 @@ mod machine;
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    // Ensure the file name is provided
     if args.len() < 2 {
         eprintln!("Usage: {} <file.qasm>", args[0]);
         std::process::exit(1);
@@ -18,8 +17,8 @@ fn main() -> io::Result<()> {
     // Create the assembler from the file
     let mut assembler = Assembler::new(file_name)?;
     assembler.compile();
-    let mut quark_machine = machine::machine_types::QuarkVM::new(ByteCodeCompiler::new("./test.out"));
-    quark_machine.store_file();
-    quark_machine.run();
+    // let mut quark_machine = machine::machine_types::QuarkVM::new(ByteCodeCompiler::new("./test.out"));
+    // quark_machine.store_file();
+    // quark_machine.run();
     Ok(())
 }

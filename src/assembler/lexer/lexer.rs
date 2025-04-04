@@ -15,25 +15,26 @@ pub enum LexerError {
     EOFWithNoTokens,
     InvalidInstructionType,
     InvalidNumber,
+    InvalidLabel
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TokenType {
     InstructionType(InstructionType),
-    Label,
+    Label(usize, usize),
     String,
     Number(NumberType),
     Colon,
     Comma,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum NumberType {
     u16(u16),
     f16(f16)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Token {
     pub tt: TokenType,
     pub line_number: usize,
@@ -67,6 +68,20 @@ impl<'a> Lexer<'a> {
             "STORE" => Ok(InstructionType::INST_STORE),
             _ => Err(LexerError::InvalidInstructionType)
         }
+    }
+
+    pub fn build_label(&mut self) -> Result<(usize, usize), LexerError> {
+        let lexed_starting = self.current_index;
+        while let Some(c) = self.source_code.chars().nth(self.current_index) {
+            if c.is_ascii_alphabetic() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let lexed_ending = self.current_index;
+
+        Ok((lexed_starting, lexed_ending))
     }
 
     pub fn advance(&mut self) {
@@ -109,17 +124,25 @@ impl<'a> Lexer<'a> {
 
     pub fn lex(&mut self) -> Result<usize, LexerError> {
         while self.current_index < self.source_code.len() || self.current_index == 0 {
-            dbg!(self.current_index);
             if let Some(c) = self.source_code.chars().nth(self.current_index) {
                 match c {
                     'a'..='z' | 'A'..='Z' => {
                         let column = self.current_index;
-                        let found_type = self.build_ident()?;
-                        self.tokens.push(Token {
-                            column,
-                            tt: TokenType::InstructionType(found_type),
-                            line_number: self.line_number
-                        });
+                        if let Ok(found_type) = self.build_ident() {
+                            self.tokens.push(Token {
+                                column,
+                                tt: TokenType::InstructionType(found_type),
+                                line_number: self.line_number
+                            });
+                        } else if let Ok((x, y)) = self.build_label() {
+                            self.tokens.push(Token {
+                                column,
+                                tt: TokenType::Label(x, y),
+                                line_number: self.line_number
+                            });
+                        } else {
+                            return Err(LexerError::InvalidLabel)
+                        }
                     },
                     '0'..='9' => {
                         let column = self.current_index;
@@ -132,6 +155,7 @@ impl<'a> Lexer<'a> {
                     },
                     '"' => {},
                     ';' => {},
+                    ':' => {},
                     '\n' => {
                         self.line_number += 1;
                         self.advance();
