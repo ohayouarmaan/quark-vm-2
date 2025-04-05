@@ -206,8 +206,23 @@ impl<'a> Lexer<'a> {
                             line_number: self.line_number
                         });
                     },
-                    ';' => {},
-                    ':' => {},
+                    ';' => {
+                        while let Some(c) = self.source_code.chars().nth(self.current_index) {
+                            if c != '\n' {
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                    },
+                    ':' => {
+                        self.tokens.push(Token {
+                            column: self.column,
+                            tt: TokenType::Colon,
+                            line_number: self.line_number
+                        });
+                        self.advance();
+                    },
                     '\n' => {
                         self.line_number += 1;
                         self.column = 1;

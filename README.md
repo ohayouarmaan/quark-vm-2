@@ -90,7 +90,7 @@ pub enum InstructionType {
 | `REF`              | Pushes a reference (pointer) to the value on top of the stack. |
 | `DEREF`            | Dereferences the pointer on top of the stack. |
 | `SYSCALL <n>`      | Pops `n` arguments and then the syscall ID from the stack. Executes native syscall. |
-| `PUSH_STR "<s>"`     | Allocates a string from the constant pool into the heap and pushes its pointer to the stack. |
+| `PUSH_STR "<s>"`   | Allocates a string from the constant pool into the heap and pushes its pointer to the stack. |
 | `DUP`              | Duplicates the top value on the stack. |
 | `INSWAP`           | Swaps top two elements on the stack. |
 | `PRINT`            | Prints the top value (usually for debug). |
