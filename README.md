@@ -1,5 +1,6 @@
 # ⚛️ ProtonVM
 
+![logo](https://github.com/ohayouarmaan/quark-vm-2/blob/main/logo.webp)
 **ProtonVM** is a general-purpose, secure, low-level virtual machine designed for maximal control, minimal abstraction, and memory safety. Built in **Rust**, it executes programs written in **QASM**, its custom assembly language. No registers, no garbage collection—just deliberate and explicit memory manipulation with powerful syscall support.
 
 ---
