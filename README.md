@@ -1,6 +1,6 @@
 # ⚛️ ProtonVM
 
-![logo](https://github.com/ohayouarmaan/quark-vm-2/blob/main/logo.webp)
+![logo](https://github.com/ohayouarmaan/quark-vm-2/blob/main/logo.webp?raw=true)
 **ProtonVM** is a general-purpose, secure, low-level virtual machine designed for maximal control, minimal abstraction, and memory safety. Built in **Rust**, it executes programs written in **QASM**, its custom assembly language. No registers, no garbage collection—just deliberate and explicit memory manipulation with powerful syscall support.
 
 ---
@@ -90,7 +90,7 @@ pub enum InstructionType {
 | `REF`              | Pushes a reference (pointer) to the value on top of the stack. |
 | `DEREF`            | Dereferences the pointer on top of the stack. |
 | `SYSCALL <n>`      | Pops `n` arguments and then the syscall ID from the stack. Executes native syscall. |
-| `PUSH_STR <i>`     | Pushes a string from the constant pool. |
+| `PUSH_STR "<s>"`     | Allocates a string from the constant pool into the heap and pushes its pointer to the stack. |
 | `DUP`              | Duplicates the top value on the stack. |
 | `INSWAP`           | Swaps top two elements on the stack. |
 | `PRINT`            | Prints the top value (usually for debug). |
