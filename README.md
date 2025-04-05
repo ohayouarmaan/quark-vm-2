@@ -117,13 +117,15 @@ SYSCALL 3     ; Pops 3 args and syscall ID from the stack, performs syscall
 ```bash
 git clone https://github.com/yourusername/protonvm
 cd protonvm
-cargo build --release
+cargo build --bin assembler
+cargo build --bin machine
 ```
 
 ### 🧪 Run a Program
 
 ```bash
-cargo run -- path/to/program.qasm
+cargo run assembler -- path/to/program.qasm path/to/output.out
+cargo run machine -- path/to/bytecode.out
 ```
 
 ---
