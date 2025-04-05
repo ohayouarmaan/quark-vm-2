@@ -1,15 +1,15 @@
-use crate::assembler::lexer::lexer::{TokenType, NumberType, Token};
-use crate::machine::machine_types::{Instruction, InstructionType};
+use crate::lexer::lexer::{TokenType, NumberType, Token};
+use proton::lib::machine_type::{ InstructionType };
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ParserError {
     UnexpectedEOF,
     UnexpectedToken,
     InvalidInstructionFormat,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ASTNode {
     Instruction(InstructionType, Vec<ASTNode>),
     Label(String),
@@ -39,17 +39,35 @@ impl<'a> Parser<'a> {
     fn build_instruction_arg_map() -> HashMap<&'static str, usize> {
         let mut map = HashMap::new();
 
+        map.insert("NOOP", 0);
         map.insert("PUSH", 1);
-        map.insert("LOAD", 1);
-        map.insert("STORE", 1);
+        map.insert("POP", 0);
         map.insert("ADD", 0);
         map.insert("SUB", 0);
         map.insert("MUL", 0);
         map.insert("DIV", 0);
-        map.insert("JMP", 1);
-        map.insert("JZ", 1);
-        map.insert("CALL", 1);
-        map.insert("RET", 0);
+        map.insert("AND", 0);
+        map.insert("OR", 0);
+        map.insert("XOR", 0);
+        map.insert("NOT", 0);
+        map.insert("SHL", 0);
+        map.insert("SHR", 0);
+        map.insert("JMPZ", 1);
+        map.insert("JMPEQ", 1);
+        map.insert("JMPNEQ", 1);
+        map.insert("JMPNZ", 1);
+        map.insert("PUSH_STR", 1); // Technically a string, so 1 logical arg
+        map.insert("ALLOC", 1);
+        map.insert("ALLOC_RAW", 1);
+        map.insert("SYSCALL", 1);
+        map.insert("DUP", 0);
+        map.insert("INSWAP", 1);
+        map.insert("PRINT", 0);
+        map.insert("LOAD", 1); // Optional, default to 0?
+        map.insert("STORE", 1);
+        map.insert("DEREF", 0);
+        map.insert("REF", 0);
+        map.insert("DEBUG", 0);
 
         map
     }
@@ -59,6 +77,7 @@ impl<'a> Parser<'a> {
         self.tokens = tokens;
 
         while self.current_index < self.tokens.len() {
+            // dbg!(&self.tokens[self.current_index]);
             match self.parse_instruction() {
                 Ok(node) => nodes.push(node),
                 Err(ParserError::UnexpectedEOF) => break,
@@ -86,8 +105,6 @@ impl<'a> Parser<'a> {
                     .copied()
                     .unwrap_or(0);
 
-                dbg!(inst_str, expected_args);
-
                 self.advance();
 
                 let mut args = Vec::new();
@@ -95,7 +112,6 @@ impl<'a> Parser<'a> {
                     if self.current_index >= self.tokens.len() {
                         return Err(ParserError::UnexpectedEOF);
                     }
-
                     match &self.tokens[self.current_index].tt {
                         TokenType::Number(num) => {
                             args.push(ASTNode::Number(*num));
@@ -104,13 +120,14 @@ impl<'a> Parser<'a> {
                         TokenType::Label(start, end) => {
                             let label_name =
                                 self.extract_label_name(*start, *end).ok_or(ParserError::UnexpectedToken)?;
+                            // dbg!(&label_name);
                             println!("LABEL: {:?}", label_name);
                             args.push(ASTNode::Label(label_name));
                             self.advance();
                         }
-                        TokenType::String => {
-                            let string_value = self.extract_string();
-                            args.push(ASTNode::StringLiteral(string_value));
+                        TokenType::String(s) => {
+                            let string_value = s;
+                            args.push(ASTNode::StringLiteral(string_value.clone()));
                             self.advance();
                         }
                         _ => return Err(ParserError::InvalidInstructionFormat),
@@ -121,10 +138,14 @@ impl<'a> Parser<'a> {
             }
             TokenType::Label(start, end) => {
                 let label_name = self.extract_label_name(start, end).ok_or(ParserError::UnexpectedToken)?;
+                // dbg!(&label_name);
                 self.advance();
                 Ok(ASTNode::Label(label_name))
             }
-            _ => Err(ParserError::UnexpectedToken),
+            _ => {
+                dbg!("WTF");
+                Err(ParserError::UnexpectedToken)
+            },
         }
     }
 

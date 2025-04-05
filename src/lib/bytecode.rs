@@ -1,9 +1,7 @@
 use core::panic;
 use std::{fs::File, io::{Read, Write}};
 use half::f16;
-use crate::machine::machine_types::{InstructionType, Word};
-
-use super::machine_types::Instruction;
+use crate::lib::machine_type::{ InstructionType, Instruction, Word };
 
 #[derive(Debug)]
 pub struct ByteCodeCompiler {
@@ -39,8 +37,9 @@ impl ByteCodeCompiler {
             for x in 0..argument_length {
                 let arg_type = buffer[i];
                 i += 1;
-                let arg = u16::from_be_bytes([buffer[i + x as usize], buffer[i + x as usize + 1]]);
+                let arg = u16::from_be_bytes([buffer[i], buffer[i + 1]]);
                 i += 2;
+
                 match arg_type {
                     0 => {
                         args.push(Word::U16(arg));
@@ -55,7 +54,7 @@ impl ByteCodeCompiler {
                         args.push(Word::I16(i16::from_be_bytes([buffer[i - 2 + x as usize], buffer[i - 2 + x as usize + 1]])));
                     }
                     _ => {
-                        panic!("QUARMVM: Unknown argument type while parsing the qasm file");
+                        panic!("QUARMVM: Unknown argument type while parsing the qasm file: {:?}", instruction);
                     }
                 }
             }

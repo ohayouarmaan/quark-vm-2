@@ -5,3 +5,11 @@ edition = "2024"
 
 [dependencies]
 half = "2.5.0"
+
+[[bin]]
+name = "assembler"
+path = "src/assembler/main.rs"
+
+[[bin]]
+name = "machine"
+path = "src/machine/main.rs"

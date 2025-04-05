@@ -1,4 +1,4 @@
-use crate::machine::machine_types::{ Instruction, InstructionType };
+use proton::lib::machine_type::{ InstructionType };
 use half::f16;
 
 const IGNORE: [char; 3] = ['\n', '\t', ' '];
@@ -7,7 +7,8 @@ pub struct Lexer<'a> {
     pub source_code: &'a str,
     current_index: usize,
     pub tokens: Vec<Token>,
-    line_number: usize
+    line_number: usize,
+    column: usize
 }
 
 #[derive(Debug)]
@@ -18,11 +19,11 @@ pub enum LexerError {
     InvalidLabel
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum TokenType {
     InstructionType(InstructionType),
     Label(usize, usize),
-    String,
+    String(String),
     Number(NumberType),
     Colon,
     Comma,
@@ -34,7 +35,7 @@ pub enum NumberType {
     f16(f16)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub tt: TokenType,
     pub line_number: usize,
@@ -46,6 +47,7 @@ impl<'a> Lexer<'a> {
         Self {
             source_code,
             current_index: 0,
+            column: 0,
             tokens: Vec::new(),
             line_number: 0
         }
@@ -54,7 +56,7 @@ impl<'a> Lexer<'a> {
     pub fn build_ident(&mut self) -> Result<InstructionType, LexerError> {
         let lexed_starting = self.current_index;
         while let Some(c) = self.source_code.chars().nth(self.current_index) {
-            if c.is_ascii_alphabetic() {
+            if c.is_ascii_alphabetic() || c == '_' {
                 self.advance();
             } else {
                 break;
@@ -63,10 +65,36 @@ impl<'a> Lexer<'a> {
         let lexed_ending = self.current_index;
 
         match &self.source_code[lexed_starting..lexed_ending] {
-            "PUSH" => Ok(InstructionType::INST_PUSH),
-            "LOAD" => Ok(InstructionType::INST_LOAD),
-            "STORE" => Ok(InstructionType::INST_STORE),
-            _ => Err(LexerError::InvalidInstructionType)
+            "NOOP"      => Ok(InstructionType::INST_NOOP),
+            "PUSH"      => Ok(InstructionType::INST_PUSH),
+            "POP"       => Ok(InstructionType::INST_POP),
+            "ADD"       => Ok(InstructionType::INST_ADD),
+            "AND"       => Ok(InstructionType::INST_AND),
+            "OR"        => Ok(InstructionType::INST_OR),
+            "XOR"       => Ok(InstructionType::INST_XOR),
+            "NOT"       => Ok(InstructionType::INST_NOT),
+            "SHL"       => Ok(InstructionType::INST_SHL),
+            "SHR"       => Ok(InstructionType::INST_SHR),
+            "MUL"       => Ok(InstructionType::INST_MUL),
+            "DIV"       => Ok(InstructionType::INST_DIV),
+            "SUB"       => Ok(InstructionType::INST_SUB),
+            "JMPZ"      => Ok(InstructionType::INST_JMPZ),
+            "JMPEQ"     => Ok(InstructionType::INST_JMPEQ),
+            "JMPNEQ"    => Ok(InstructionType::INST_JMPNEQ),
+            "JMPNZ"     => Ok(InstructionType::INST_JMPNZ),
+            "PUSH_STR"  => Ok(InstructionType::INST_PUSH_STR),
+            "ALLOC"     => Ok(InstructionType::INST_ALLOC),
+            "ALLOC_RAW" => Ok(InstructionType::INST_ALLOC_RAW),
+            "SYSCALL"   => Ok(InstructionType::INST_SYSCALL),
+            "DUP"       => Ok(InstructionType::INST_DUP),
+            "INSWAP"    => Ok(InstructionType::INST_INSWAP),
+            "PRINT"     => Ok(InstructionType::INST_PRINT),
+            "LOAD"      => Ok(InstructionType::INST_LOAD),
+            "STORE"     => Ok(InstructionType::INST_STORE),
+            "DEREF"     => Ok(InstructionType::INST_DEREF),
+            "REF"       => Ok(InstructionType::INST_REF),
+            "DEBUG"     => Ok(InstructionType::INST_DEBUG),
+            _ => Err(LexerError::InvalidInstructionType),
         }
     }
 
@@ -84,9 +112,25 @@ impl<'a> Lexer<'a> {
         Ok((lexed_starting, lexed_ending))
     }
 
+    pub fn build_string(&mut self) -> Result<String, LexerError> {
+        self.advance();
+        let lexed_starting = self.current_index;
+        while let Some(c) = self.source_code.chars().nth(self.current_index) {
+            if c != '"' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.advance();
+        let lexed_ending = self.current_index - 1;
+        Ok(self.source_code[lexed_starting..lexed_ending].to_string())
+    }
+
     pub fn advance(&mut self) {
         if self.current_index < self.source_code.len() {
             self.current_index += 1;
+            self.column += 1;
         }
     }
 
@@ -145,7 +189,7 @@ impl<'a> Lexer<'a> {
                         }
                     },
                     '0'..='9' => {
-                        let column = self.current_index;
+                        let column = self.column;
                         let number = self.build_number()?;
                         self.tokens.push(Token {
                             column,
@@ -153,11 +197,20 @@ impl<'a> Lexer<'a> {
                             line_number: self.line_number
                         });
                     },
-                    '"' => {},
+                    '"' => {
+                        let column = self.column;
+                        let parsed_string = self.build_string()?;
+                        self.tokens.push(Token {
+                            column,
+                            tt: TokenType::String(parsed_string),
+                            line_number: self.line_number
+                        });
+                    },
                     ';' => {},
                     ':' => {},
                     '\n' => {
                         self.line_number += 1;
+                        self.column = 1;
                         self.advance();
                     },
                     '\0' => {
