@@ -12,7 +12,8 @@ pub enum ParserError {
 #[derive(Debug, Clone)]
 pub enum ASTNode {
     Instruction(InstructionType, Vec<ASTNode>),
-    Label(String),
+    Variable(String),
+    Label(String, Vec<ASTNode>),
     Number(NumberType),
     StringLiteral(String),
 }
@@ -122,7 +123,7 @@ impl<'a> Parser<'a> {
                                 self.extract_label_name(*start, *end).ok_or(ParserError::UnexpectedToken)?;
                             // dbg!(&label_name);
                             println!("LABEL: {:?}", label_name);
-                            args.push(ASTNode::Label(label_name));
+                            args.push(ASTNode::Variable(label_name));
                             self.advance();
                         }
                         TokenType::String(s) => {
@@ -138,9 +139,16 @@ impl<'a> Parser<'a> {
             }
             TokenType::Label(start, end) => {
                 let label_name = self.extract_label_name(start, end).ok_or(ParserError::UnexpectedToken)?;
-                // dbg!(&label_name);
                 self.advance();
-                Ok(ASTNode::Label(label_name))
+                if let TokenType::Colon = self.tokens[self.current_index].tt {
+                    self.advance();
+                }
+                let mut ins: Vec<ASTNode> = vec![];
+                while !matches!(self.tokens[self.current_index].tt, TokenType::Label(_, _)) {
+                    ins.push(self.parse_instruction()?);
+                    self.current_index += 1;
+                }
+                Ok(ASTNode::Label(label_name, ins))
             }
             _ => {
                 dbg!("WTF");
@@ -157,7 +165,6 @@ impl<'a> Parser<'a> {
 
     fn extract_label_name(&self, start: usize, end: usize) -> Option<String> {
         let label_name = &self.source_code[start..end];
-
         if label_name.is_empty() {
             None
         } else {
