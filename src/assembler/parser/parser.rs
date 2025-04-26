@@ -13,7 +13,7 @@ pub enum ParserError {
 pub enum ASTNode {
     Instruction(InstructionType, Vec<ASTNode>),
     Variable(String),
-    Label(String, Vec<ASTNode>),
+    Label(String),
     Number(NumberType),
     StringLiteral(String),
 }
@@ -68,6 +68,8 @@ impl<'a> Parser<'a> {
         map.insert("STORE", 1);
         map.insert("DEREF", 0);
         map.insert("REF", 0);
+        map.insert("DEBUG", 0);
+        map.insert("CALL", 1);
         map.insert("DEBUG", 0);
 
         map
@@ -143,12 +145,7 @@ impl<'a> Parser<'a> {
                 if let TokenType::Colon = self.tokens[self.current_index].tt {
                     self.advance();
                 }
-                let mut ins: Vec<ASTNode> = vec![];
-                while !matches!(self.tokens[self.current_index].tt, TokenType::Label(_, _)) {
-                    ins.push(self.parse_instruction()?);
-                    self.current_index += 1;
-                }
-                Ok(ASTNode::Label(label_name, ins))
+                Ok(ASTNode::Label(label_name))
             }
             _ => {
                 dbg!("WTF");

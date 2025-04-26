@@ -67,6 +67,7 @@ pub struct QuarkVM {
     pub memory: Vec<u8>,
     pub heap: Vec<StackValues>,
     pub constant_pools: [StackValues; 4096],
+    pub call_stack: Vec<u16>,
     pub free_list: Vec<(*mut (), (u16, PointerType))>,
     pub allocated_memory: HashMap<*mut (), (u16, PointerType)>,
     pub sp: i16,
@@ -83,6 +84,7 @@ impl Default for QuarkVM {
             memory: vec![],
             heap: vec![],
             constant_pools: [StackValues::U16(0); 4096],
+            call_stack: vec![],
             free_list: vec![],
             allocated_memory: HashMap::new(),
             sp: -1,
@@ -101,6 +103,7 @@ impl QuarkVM {
             memory: Vec::new(),
             heap: Vec::new(),
             constant_pools: [StackValues::U16(0); 4096],
+            call_stack: Vec::new(),
             free_list: Vec::new(),
             allocated_memory: HashMap::new(),
             sp: -1,
@@ -733,6 +736,39 @@ impl QuarkVM {
             InstructionType::INST_DEBUG => {
                 self.debug_stack();
                 self.pc += 1;
+            },
+
+            InstructionType::INST_CALL => {
+                if let Some(value) = &self.instructions[self.pc as usize].values {
+                    if let Word::U16(index) = value[0] {
+                        self.call_stack.push(self.pc + 1);
+                        self.pc = index;
+                    }
+                }
+            }
+
+            InstructionType::INST_RET => {
+                if let Some(to_return) = self.call_stack.pop() {
+                    self.pc = to_return;
+                }
+            },
+
+            InstructionType::INST_PUT => {
+                if let StackValues::Pointer(ptr) = self.pop_stack() {
+                    unsafe { 
+                        let (_, ptr_type) = self.allocated_memory.get(&ptr).expect("QUARMVM: Error while getting info for pointer.");
+                        if *ptr_type == PointerType::StackValuesPointer {
+                            *(ptr as *mut StackValues) = self.pop_stack();
+                        } else if let StackValues::U16(v) = self.pop_stack() {
+                            let lsb = (v & 0xFF) as u8;
+                            let msb = (v >> 8) as u8;
+                            *(ptr as *mut u8) = lsb;
+                            if msb != 0 {
+                                *((ptr as *mut u8).wrapping_add(1)) = lsb;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -789,6 +825,9 @@ pub enum InstructionType {
     INST_DEREF,
     INST_REF,
     INST_DEBUG,
+    INST_CALL,
+    INST_RET,
+    INST_PUT,
 }
 
 impl Default for InstructionType {
@@ -802,7 +841,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 28 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 31 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -993,6 +1032,27 @@ pub fn DEFINE_REF() -> Instruction {
 pub fn DEBUG() -> Instruction {
     Instruction {
         tt: InstructionType::INST_DEBUG,
+        values: None
+    }
+}
+
+pub fn DEFINE_CALL(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_CALL,
+        values: Some(vec![Word::from(x)])
+    }
+}
+
+pub fn DEFINE_RET() -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_RET,
+        values: None
+    }
+}
+
+pub fn DEFINE_PUT() -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_PUT,
         values: None
     }
 }

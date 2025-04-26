@@ -18,7 +18,9 @@ fn main() {
     let output = &args[2];
 
     match Assembler::new(input, output) {
-        Ok(mut assembler) => assembler.compile(),
+        Ok(mut assembler) => {
+            assembler.compile()
+        },
         Err(e) => {
             eprintln!("Failed to read source file: {}", e);
             process::exit(1);
