@@ -218,7 +218,6 @@ impl QuarkVM {
             self.free_list.push((ptr, (freed_size.0, PointerType::RawPointer)));
         }
 
-        // Sort free list before merging
         self.free_list.sort_by_key(|&(ptr, _)| ptr as usize);
 
         let mut new_free_list: Vec<(*mut (), (u16, PointerType))> = Vec::new();
