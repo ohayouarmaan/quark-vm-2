@@ -29,8 +29,8 @@ all: build
 
 build:
 	@echo -e "$(GREEN)[BUILD] Compiling $(ASSEMBLER_BIN) and $(MACHINE_BIN) in $(BUILD_MODE) mode...$(NC)"
-	@$(CARGO) build --bin $(ASSEMBLER_BIN) --$(BUILD_MODE)
-	@$(CARGO) build --bin $(MACHINE_BIN) --$(BUILD_MODE)
+	@$(CARGO) build --bin $(ASSEMBLER_BIN) --release
+	@$(CARGO) build --bin $(MACHINE_BIN) --release
 	@echo -e "$(GREEN)[DONE] Build completed.$(NC)"
 
 run-assembler: build

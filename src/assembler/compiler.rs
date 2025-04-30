@@ -39,10 +39,6 @@ impl Compiler {
         }
     }
 
-    pub fn download(&mut self) -> () {
-
-    }
-
     pub fn generate_label_table(&mut self) {
         while self.ic < self.ASTnodes.len() {
             match &self.ASTnodes[self.ic] {
@@ -65,6 +61,7 @@ impl Compiler {
         }
         self.ic = 0;
         self.instruction_index = 0;
+        dbg!(&self.symbol_table);
     }
 
     pub fn get_or_allocate_variable_address(&mut self, name: &str) -> Result<u16, CompilerError> {

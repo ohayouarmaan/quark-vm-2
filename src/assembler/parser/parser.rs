@@ -71,6 +71,8 @@ impl<'a> Parser<'a> {
         map.insert("DEBUG", 0);
         map.insert("CALL", 1);
         map.insert("DEBUG", 0);
+        map.insert("PUT", 0);
+        map.insert("STD_SYSCALL", 1);
 
         map
     }
@@ -148,7 +150,7 @@ impl<'a> Parser<'a> {
                 Ok(ASTNode::Label(label_name))
             }
             _ => {
-                dbg!("WTF");
+                dbg!("WTF", token, self.tokens.clone());
                 Err(ParserError::UnexpectedToken)
             },
         }

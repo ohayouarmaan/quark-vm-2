@@ -1,9 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::{HashMap, VecDeque}, ops::Deref, os::fd::{AsRawFd, RawFd}, process::exit};
 use super::bytecode::ByteCodeCompiler;
 use half::f16;
-use core::arch::asm;
+use libloading::{Library, Symbol};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
+use core::{arch::asm, panic};
 
-const MAX_STACK_SIZE: usize = 4096;
+const MAX_STACK_SIZE: usize = 50;
 
 #[derive(Debug)]
 pub enum Word {
@@ -49,7 +52,7 @@ impl From<i16> for Word {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum StackValues{
+pub enum StackValues {
     U16(u16),
     I16(i16),
     Pointer(*mut ())
@@ -62,11 +65,18 @@ pub enum PointerType {
 }
 
 #[derive(Debug)]
+pub enum Entries {
+    File(std::fs::File),
+    TcpSocket(std::net::TcpStream),
+    UdpSocket(std::net::UdpSocket),
+}
+
+#[derive(Debug)]
 pub struct QuarkVM {
     pub stack: [StackValues; MAX_STACK_SIZE],
     pub memory: Vec<u8>,
     pub heap: Vec<StackValues>,
-    pub constant_pools: [StackValues; 4096],
+    pub constant_pools: [StackValues; MAX_STACK_SIZE],
     pub call_stack: Vec<u16>,
     pub free_list: Vec<(*mut (), (u16, PointerType))>,
     pub allocated_memory: HashMap<*mut (), (u16, PointerType)>,
@@ -74,7 +84,9 @@ pub struct QuarkVM {
     pub pc: u16,
     pub running: bool,
     pub instructions: Vec<Instruction>,
-    pub byte_code_file: Option<ByteCodeCompiler>
+    pub byte_code_file: Option<ByteCodeCompiler>,
+    pub entry_vector: Vec<Entries>,
+    pub fd_table: HashMap<i16, usize>
 }
 
 impl Default for QuarkVM {
@@ -83,7 +95,7 @@ impl Default for QuarkVM {
             stack: [StackValues::U16(0); MAX_STACK_SIZE],
             memory: vec![],
             heap: vec![],
-            constant_pools: [StackValues::U16(0); 4096],
+            constant_pools: [StackValues::U16(0); MAX_STACK_SIZE],
             call_stack: vec![],
             free_list: vec![],
             allocated_memory: HashMap::new(),
@@ -91,7 +103,9 @@ impl Default for QuarkVM {
             pc: 0,
             running: false,
             instructions: vec![],
-            byte_code_file: None
+            byte_code_file: None,
+            entry_vector: vec![],
+            fd_table: HashMap::new()
         }
     }
 }
@@ -102,13 +116,15 @@ impl QuarkVM {
             stack: [StackValues::U16(0); MAX_STACK_SIZE],
             memory: Vec::new(),
             heap: Vec::new(),
-            constant_pools: [StackValues::U16(0); 4096],
+            constant_pools: [StackValues::U16(0); MAX_STACK_SIZE],
             call_stack: Vec::new(),
             free_list: Vec::new(),
             allocated_memory: HashMap::new(),
             sp: -1,
             pc: 0,
             running: true,
+            entry_vector: vec![],
+            fd_table: HashMap::new(),
 
             instructions: vec![
 
@@ -255,8 +271,10 @@ impl QuarkVM {
     pub fn print(s: StackValues) {
         if let StackValues::Pointer(v) = s {
             unsafe { println!("{:?}", *v) };
-        } else {
-            println!("{:?}", s);
+        } else if let StackValues::U16(x) = s {
+            unsafe {
+                println!("as u16: {:?} as char: {:?}", x, char::from_u32_unchecked(x as u32));
+            }
         }
     }
 
@@ -617,7 +635,7 @@ impl QuarkVM {
                         }
                     }
 
-                    let result: isize;
+                    let result: *mut u8;
                     unsafe {
                         asm!(
                             "syscall",
@@ -631,7 +649,7 @@ impl QuarkVM {
                             lateout("rax") result,
                         );
                     }
-                    self.push_stack(StackValues::U16(result as u16));
+                    self.push_stack(StackValues::Pointer(result as *mut ()));
                 }
                 self.pc += 1;
             },
@@ -682,7 +700,8 @@ impl QuarkVM {
             InstructionType::INST_STORE => {
                 if let Some(value) = &self.instructions[self.pc as usize].values {
                     if let Word::U16(index) = value[0] {
-                        self.constant_pools[index as usize] = self.pop_stack();
+                        let v = self.pop_stack();
+                        self.constant_pools[index as usize] = v;
                     }
                 }
                 self.pc += 1;
@@ -755,6 +774,7 @@ impl QuarkVM {
             InstructionType::INST_PUT => {
                 if let StackValues::Pointer(ptr) = self.pop_stack() {
                     unsafe { 
+                        println!("ptr: {:?}", ptr);
                         let (_, ptr_type) = self.allocated_memory.get(&ptr).expect("QUARMVM: Error while getting info for pointer.");
                         if *ptr_type == PointerType::StackValuesPointer {
                             *(ptr as *mut StackValues) = self.pop_stack();
@@ -768,6 +788,94 @@ impl QuarkVM {
                         }
                     }
                 }
+            },
+
+            InstructionType::INST_STD_SYSCALL => {
+                if let StackValues::U16(syscall_num) = self.pop_stack(){
+                    let mut args: VecDeque<StackValues> = VecDeque::new();
+
+                    if let Some(t_values) = &self.instructions[self.pc as usize].values {
+                        if let Word::U16(len) = t_values[0] {
+                            (0..(len as usize)).for_each(|i| {
+                                args.push_back(self.pop_stack());
+                            });
+                        }
+                    }
+
+                    self.std_syscall_match(syscall_num, args);
+                    self.pc += 1;
+                } else {
+                    panic!("QUARKVM: Expected a u16");
+                }
+            }
+        }
+    }
+
+    pub fn std_syscall_match(&mut self, id: u16, mut args: VecDeque<StackValues>) {
+        match id {
+            0 => {
+                // SYSCALL to Exit.
+                if let StackValues::U16(exit_code) = self.pop_stack() {
+                    exit(exit_code.into());
+                }
+            },
+            1 => {
+                // Get FILE fd
+                if let StackValues::Pointer(mut file_name) = args.pop_front().expect("QUARMVM: Expected a file name") {
+                    let mut name = String::new();
+                    unsafe{ 
+                        if let StackValues::U16(mut current_char) = *(file_name as *mut StackValues) {
+                            while char::from_u32(current_char.into()).expect("QUARKVM: Not a character while reading a file path") != '\0' {
+                                name.push(char::from_u32(current_char.into()).expect("UNREACHABLE"));
+                                file_name = (file_name as *mut StackValues).wrapping_add(1) as *mut ();
+                                if let StackValues::U16(next_char) = *(file_name as *mut StackValues) {
+                                    current_char = next_char;
+                                }
+                            }
+                        }
+                    };
+                    
+                    // TODO: Get another argument which specify the permissions
+                    let f = OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .open(name)
+                        .expect("QUARMVM: Error while opening the file");
+
+                    let fd = f.as_raw_fd();
+                    self.entry_vector.push(Entries::File(f));
+                    self.fd_table.insert(fd as i16, self.entry_vector.len() - 1);
+                    self.push_stack(StackValues::I16(fd as i16));
+                }
+            },
+            2 => {
+                // READ / WRITE
+                println!("SUPPOSED TO READ: {:?}", args);
+                if let StackValues::U16(permission) = args.pop_front().expect("QUARKVM: Expected a read / write permission integer 0: read 1: read + write") {
+                    if let StackValues::Pointer(ptr) = args.pop_front().expect("QUARKVM: Expected buffer Pointer") {
+                        if let StackValues::I16(fd) = args.pop_front().expect("QUARKVM: Expected a File Descriptor") {
+                            if let StackValues::U16(read_size) = args.pop_front().expect("QUARKVM: Expected a File Descriptor") {
+                                let slice = unsafe { std::slice::from_raw_parts_mut((ptr as *mut u8), read_size.into()) };
+                                if permission == 0 {
+                                    let entry_id = self.fd_table.get(&fd).expect("QUARKVM: Invalid FD");
+                                    if let Entries::File(resource) = self.entry_vector.get_mut(*entry_id).expect("") { 
+                                        let read_size: u16 = resource.read(slice).expect("QUARKVM: Error while reading the file.").try_into().expect("QUARKVM: Read Data Too large > u16");
+                                        self.push_stack(StackValues::U16(read_size));
+                                    }
+                                } else {
+                                    let entry_id = self.fd_table.get(&fd).expect("QUARKVM: Invalid FD");
+                                    if let Entries::File(resource) = self.entry_vector.get_mut(*entry_id).expect("") { 
+                                        let read_size: u16 = resource.write(slice).expect("QUARKVM: Error while writing the file.").try_into().expect("QUARKVM: Write Data Too large > u16");
+                                        self.push_stack(StackValues::U16(read_size));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            c => {
+                println!("wow, {:?}", c);
             }
         }
     }
@@ -827,6 +935,7 @@ pub enum InstructionType {
     INST_CALL,
     INST_RET,
     INST_PUT,
+    INST_STD_SYSCALL,
 }
 
 impl Default for InstructionType {
@@ -840,7 +949,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 31 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 32 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -1055,3 +1164,11 @@ pub fn DEFINE_PUT() -> Instruction {
         values: None
     }
 }
+
+pub fn DEFINE_STD_SYSCALL(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_STD_SYSCALL,
+        values: Some(vec![Word::from(x)])
+    }
+}
+
