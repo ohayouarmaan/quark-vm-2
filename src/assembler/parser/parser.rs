@@ -73,6 +73,8 @@ impl<'a> Parser<'a> {
         map.insert("DEBUG", 0);
         map.insert("PUT", 0);
         map.insert("STD_SYSCALL", 1);
+        map.insert("DLL_LOAD", 0);
+        map.insert("DLL_CALL", 1);
 
         map
     }

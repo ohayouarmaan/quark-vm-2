@@ -7,7 +7,6 @@
 
 ## 🔥 Key Features
 
-- 🧠 **No Registers** – Purely stack-based execution with constant pool lookups.
 - 💾 **Heap-Based Allocation** – All structured data lives in the managed heap.
 - 🧊 **Raw Memory Buffer** – A sandboxed space for native syscalls and unsafe operations.
 - 🔐 **Deep Security Model** – Hard separation of heap and raw buffer; corruption is virtually impossible.

@@ -98,6 +98,8 @@ impl<'a> Lexer<'a> {
             "RET"     => Ok(InstructionType::INST_RET),
             "PUT"     => Ok(InstructionType::INST_PUT),
             "STD_SYSCALL"     => Ok(InstructionType::INST_STD_SYSCALL),
+            "DLL_LOAD"     => Ok(InstructionType::INST_DLL_LOAD),
+            "DLL_CALL"     => Ok(InstructionType::INST_DLL_CALL),
             _ => { 
                 self.current_index -= lexed_ending - lexed_starting;
                 return Err(LexerError::InvalidInstructionType);
