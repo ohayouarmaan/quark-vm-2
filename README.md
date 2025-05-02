@@ -13,6 +13,7 @@
 - 📦 **QASM Assembly** – Lean and expressive instruction set for fine-grained control.
 - 🧵 **Reference/Dereference Semantics** – Supports indirection across heap and raw buffer.
 - 🛠️ **Native Syscalls** – Direct system-level interaction via QASM.
+- 🚀 **Supports Native DLLs** – Can run Native DLLs.
 
 ---
 
@@ -65,8 +66,15 @@ pub enum InstructionType {
     INST_LOAD,
     INST_STORE,
     INST_DEREF,
+    INST_DEREF_FOREIGN,
     INST_REF,
     INST_DEBUG,
+    INST_CALL,
+    INST_RET,
+    INST_PUT,
+    INST_STD_SYSCALL,
+    INST_DLL_LOAD,
+    INST_DLL_CALL,
 }
 ```
 
@@ -95,17 +103,20 @@ pub enum InstructionType {
 | `PRINT`            | Prints the top value (usually for debug). |
 | `DEBUG`            | Emits current VM state snapshot (stack, heap, etc.). |
 | `NOOP`             | Does nothing. Great for alignment or labels. |
+| `DLL_LOAD`         | Loads a given DLL by Popping the TOS for the DLL Path |
+| `DLL_CALL <n>`     | Calls any given method from the DLL by popping the TOS to get method name and n mentions the number of arguments it should pop |
 
 ---
 
 ## 🧾 QASM Example
 
 ```qasm
-LOAD 0        ; Load value from heap at index 0
-ALLOC 16      ; Allocates 16 words in the heap
-ALLOC_RAW 16  ; Allocates 16 bytes in the raw memory
-STORE 0       ; Stores the top of stack in constant pool at index 0
-SYSCALL 3     ; Pops 3 args and syscall ID from the stack, performs syscall
+main:
+    LOAD 0        ; Load value from heap at index 0
+    ALLOC 16      ; Allocates 16 words in the heap
+    ALLOC_RAW 16  ; Allocates 16 bytes in the raw memory
+    STORE 0       ; Stores the top of stack in constant pool at index 0
+    SYSCALL 3     ; Pops 3 args and syscall ID from the stack, performs syscall
 ```
 
 ---

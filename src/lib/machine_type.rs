@@ -758,7 +758,6 @@ impl QuarkVM {
                                 && (x as *mut StackValues)
                                     < (ptr as *mut StackValues).add(size as usize)
                             {
-                                println!("DEREFING A STACKVALUE POINTER: {:?}", (x));
                                 self.push_stack(*(x as *mut StackValues));
                                 break;
                             }
@@ -903,16 +902,16 @@ impl QuarkVM {
                                 let cif = libffi::middle::Cif::new(argument_types, libffi::middle::Type::pointer());
                                 let cp = libffi::middle::CodePtr::from_fun(*method_handle);
                                 unsafe {
-                                    let output: i32 = cif.call(cp, &arguments);
-                                    dbg!(output);
-                                    self.push_stack(StackValues::Pointer(output as *mut ()));
+                                    let output: *mut () = cif.call(cp, &arguments);
+                                    self.push_stack(StackValues::Pointer(output));
                                     self.pc += 1;
                                 }
                             }
                         }
                     }
                 }
-            }
+            },
+            InstructionType::INST_DEREF_FOREIGN => {}
         }
     }
 
@@ -1058,6 +1057,7 @@ pub enum InstructionType {
     INST_LOAD,
     INST_STORE,
     INST_DEREF,
+    INST_DEREF_FOREIGN,
     INST_REF,
     INST_DEBUG,
     INST_CALL,
@@ -1079,7 +1079,7 @@ impl TryFrom<u8> for InstructionType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            x if x <= 34 => Ok(unsafe { std::mem::transmute(x) }),
+            x if x <= 35 => Ok(unsafe { std::mem::transmute(x) }),
             _ => Err(()),
         }
     }
@@ -1257,6 +1257,13 @@ pub fn DEFINE_DEREF() -> Instruction {
     Instruction {
         tt: InstructionType::INST_DEREF,
         values: None,
+    }
+}
+
+pub fn DEFINE_DEREF_FOREIGN(x: u16) -> Instruction {
+    Instruction {
+        tt: InstructionType::INST_DEREF,
+        values: Some(vec![Word::from(x)]),
     }
 }
 

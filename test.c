@@ -1,7 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 
-int add(int a, int b) {
-  printf("%d %d\n", a, b);
-  printf("Hello------------------------!!!!!!!!!!!!!%d\n", a + b);
-  return a + b;
+void* add(int a, int b) {
+  int* addition = (int*)malloc(sizeof(int));
+  *addition = a + b;
+  return (void*)addition;
 }
